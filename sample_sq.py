@@ -62,14 +62,8 @@ def main(params):
     # use pretrained resnet 152 to extract features for analysis
     feat_extract = torchvision.models.resnet152(pretrained = True)
 
-    # use pretrained resnet 18 to extract features for training
+    # use pretrained resnet 18 to extract features for evaluating
     backbone = get_backbone_class(params.backbone)()
-    # body_state_path = get_final_pretrain_state_path(base_output_dir)
-    # state = torch.load(body_state_path)
-    # backbone = get_backbone_class(params.backbone)()
-    # model = get_model_class(params.model)(backbone, params)
-    # model.load_state_dict(copy.deepcopy(state))
-    # support_input_all = np.empty((0,512)) 
     
 
     with torch.no_grad():

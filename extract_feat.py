@@ -74,13 +74,13 @@ def main(params):
 def main2(params):
     print(params.source_dataset)
     n_episodes = 10
-    body_state_path = './logs/baseline/output/resnet10_simclr_LS_default/pretrain_state_1000.pt'
-    state = torch.load(body_state_path)
-    source_dir = './logs/baseline/output/resnet10_simclr_LS_default/{}/05way_005shot_head_default'.format(params.source_dataset)
+    # body_state_path = './logs/baseline/output/resnet10_simclr_LS_default/pretrain_state_1000.pt'
+    # state = torch.load(body_state_path)
+    # source_dir = './logs/baseline/output/resnet10_simclr_LS_default/{}/05way_005shot_head_default'.format(params.source_dataset)
 
-    backbone = get_backbone_class(params.backbone)()
-    body = get_model_class(params.model)(backbone, params)
-    body.load_state_dict(copy.deepcopy(state))
+    # backbone = get_backbone_class(params.backbone)()
+    # body = get_model_class(params.model)(backbone, params)
+    # body.load_state_dict(copy.deepcopy(state))
 
     model = torchvision.models.resnet101(pretrained = True)
 
