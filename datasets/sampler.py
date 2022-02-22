@@ -39,7 +39,14 @@ class EpisodeSampler:
         :return: support: ndarray[w, s], query: ndarray[w ,q]
         """
         rs = np.random.RandomState(self.episode_seeds[index])
-        selected_classes = [0, 1, 2, 3, 4]
+        # fix class 
+        if self.dataset.name == 'CropDisease':
+            selected_classes = [3, 15, 16, 24, 28]
+        elif self.dataset.name == 'ISIC':
+            selected_classes = [0, 1, 2, 3, 4]
+        else:
+            selected_classes = rs.permutation(self.n_classes)[:self.w]
+
         #selected_classes = rs.permutation(self.n_classes)[:self.w] # fix classes
         indices = []
         for cls in selected_classes: # 해당 cls에 해당하는 sample index 중에서 sampling

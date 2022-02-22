@@ -37,7 +37,7 @@ def main(params):
     s = params.n_shot
     q = params.n_query_shot
 
-    
+    n_set = 10
 
     # Settings
     n_episodes = 1
@@ -45,13 +45,13 @@ def main(params):
     n_data = params.n_way * params.n_shot
     n_epoch = 100
 
-    df_test_history = pd.DataFrame(None, index=list(range(0, 100)), # 10의자리 : support index, 1의자리 : query index
+    df_test_history = pd.DataFrame(None, index=list(range(0, n_set*n_set)), # 10의자리 : support index, 1의자리 : query index
                            columns=['epoch{}'.format(e + 1) for e in range(n_epoch)]) # for showing training procedure
-    df_test_episode = pd.DataFrame(None, index=['support_{}'.format(e) for e in range(10)], # index : support index, column : query index
-                           columns=['query_{}'.format(e) for e in range(10)])
+    df_test_episode = pd.DataFrame(None, index=['support_{}'.format(e) for e in range(n_set)], # index : support index, column : query index
+                           columns=['query_{}'.format(e) for e in range(n_set)])
     
-    test_history_path = os.path.join(output_dir, "sq_test_history.csv")
-    test_episode_path = os.path.join(output_dir, "sq_test_acc.csv")
+    test_history_path = os.path.join(output_dir, "sq_test_history_{}.csv".format(n_set))
+    test_episode_path = os.path.join(output_dir, "sq_test_acc_{}.csv".format(n_set))
     print()
     
     # Whether to optimize for fixed features (when there is no augmentation and only head is updated)
@@ -67,13 +67,13 @@ def main(params):
     optimizer = torch.optim.SGD(opt_params, lr=params.ft_lr, momentum=0.9, dampening=0.9, weight_decay=0.001)
     loss_fn = nn.CrossEntropyLoss().cuda()       
 
-    for support_idx in range(10):
-        f_support = np.load(os.path.join(output_dir, 'embedding/{}_support.npy'.format(support_idx)))
+    for support_idx in range(n_set):
+        f_support = np.load(os.path.join(output_dir, 'embedding/{:03d}_support.npy'.format(support_idx)))
         print(os.path.join(output_dir, 'embedding/{}_support.npy'.format(support_idx)))
         f_support = torch.Tensor(f_support).squeeze(-1).squeeze(-1).cuda()
-        for query_idx in range(10):
+        for query_idx in range(n_set):
             test_acc_history = []
-            f_query = np.load(os.path.join(output_dir, 'embedding/{}_query.npy'.format(query_idx)))
+            f_query = np.load(os.path.join(output_dir, 'embedding/{:03d}_query.npy'.format(query_idx)))
             f_query = torch.Tensor(f_query).squeeze(-1).squeeze(-1).cuda()
 
             for epoch in range(n_epoch):
@@ -115,7 +115,7 @@ def main(params):
 
                 test_acc_history.append(test_acc.item())
 
-            df_index = support_idx * 10 + query_idx
+            df_index = support_idx * n_set + query_idx
             df_test_history.loc[df_index] = test_acc_history
             fmt = 'Episode {:03d}: train_loss={:6.4f} test_acc={:6.2f}'
             print(fmt.format(df_index, train_loss, test_acc_history[-1] * 100))
