@@ -30,20 +30,19 @@ def main(params):
     print(output_dir)
     print()
 
+    n_set = 20
 
     if params.n_shot == 1:
-        s = 160 # 1(support shot) + 15(query shot) * 10(episode)
-        total_shot = 16
+        total_shot = 16 # 1(support shot) + 15(query shot) 
     else:
-        s = 200 # 5 + 15
         total_shot = 20
+    s = total_shot * n_set 
 
     q = 0
     w = params.n_way
 
     # Settings
     n_episodes = 1 # to avoid overlapping, we sample all the imgs in 1 episode
-    n_epoch = 100
 
     print()
 
@@ -85,8 +84,7 @@ def main(params):
     class3 = np.random.permutation(x_support[ 3*s : 4*s])
     class4 = np.random.permutation(x_support[ 4*s : 5*s])
 
-    # devide into 10 episodes
-    for i in tqdm(range(10)):
+    for i in tqdm(range(n_set)):
         class0_ep = class0[i * total_shot : (i+1) * total_shot]
         class1_ep = class1[i * total_shot : (i+1) * total_shot]
         class2_ep = class2[i * total_shot : (i+1) * total_shot]
@@ -112,10 +110,10 @@ def main(params):
         os.makedirs(feature_path, exist_ok=True)
         os.makedirs(embedding_path, exist_ok=True)
 
-        feat_path_support = os.path.join(feature_path, "{}_support.npy".format(i))
-        feat_path_query = os.path.join(feature_path, "{}_query.npy".format(i))
-        embed_path_support = os.path.join(embedding_path, "{}_support.npy".format(i))
-        embed_path_query = os.path.join(embedding_path, "{}_query.npy".format(i))
+        feat_path_support = os.path.join(feature_path, "{:03d}_support.npy".format(i))
+        feat_path_query = os.path.join(feature_path, "{:03d}_query.npy".format(i))
+        embed_path_support = os.path.join(embedding_path, "{:03d}_support.npy".format(i))
+        embed_path_query = os.path.join(embedding_path, "{:03d}_query.npy".format(i))
 
         np.save(feat_path_support, feat_sampled_support) 
         np.save(feat_path_query, feat_sampled_query) 
