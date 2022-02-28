@@ -21,7 +21,10 @@ from utils import *
 # base_output_dir : #./logs/output_baseline/mini/resnet10_simclr_LS_default/mini_test/05way_005shot_head_default
 # 둘다 makedir true
 
-def main(params):
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
+
+def main(params): 
+    print("\n", torch.cuda.get_device_name(torch.cuda.current_device()))
     base_output_dir = get_output_directory(params) 
     output_dir = get_ft_output_directory(params)
     torch_pretrained = ("torch" in params.backbone)
@@ -30,8 +33,18 @@ def main(params):
     print(output_dir)
     print()
 
+    if params.target_dataset == "miniImageNet_test":
+        n_target_class = 20
+    elif params.target_dataset == "CropDisease":
+        n_target_class = 38
+    elif params.target_dataset == "EuroSAT":
+        n_target_class = 10
+    elif params.target_dataset == "ISIC" or params.target_dataset == "ChestX":
+        n_target_class = 7
+
     # Settings
-    n_episodes = 600
+    n_episodes = math.comb(n_target_class, params.n_way)
+    print("all combination :", n_episodes)
     bs = params.ft_batch_size
     n_data = params.n_way * params.n_shot
     n_epoch = int( math.ceil(n_data / 4) * params.ft_epochs / math.ceil(n_data / bs) )
@@ -80,11 +93,8 @@ def main(params):
     support_batches = math.ceil(w * s / bs)
 
     # Output (history, params)
-    train_history_path = get_ft_train_history_path(output_dir)
-    test_history_path = get_ft_test_history_path(output_dir)
-    if params.ft_augmentation:
-        train_history_path = train_history_path.replace('.csv', '_{}_aug.csv'.format(params.ft_augmentation))
-        test_history_path = test_history_path.replace('.csv', '_{}_aug.csv'.format(params.ft_augmentation))
+    train_history_path = get_ft_train_history_path(output_dir).replace('.csv', '_cls.csv')
+    test_history_path = get_ft_test_history_path(output_dir).replace('.csv', '_cls.csv')
     
     #loss_history_path = os.path.join(output_dir, 'loss_history.csv')
     grad_history_path = os.path.join(output_dir, 'grad_history.csv')
@@ -153,8 +163,8 @@ def main(params):
             body.load_state_dict(copy.deepcopy(state))  # note, override model.load_state_dict to change this behavior.
         head = get_classifier_head_class(params.ft_head)(512, params.n_way,
                                                          params)  # TODO: apply ft_features
-        head_small = get_classifier_head_class(params.ft_head)(512, params.n_way,
-                                                         params) 
+        head_state =  torch.load('./classifier_init/random_init_{:03d}.pt'.format(0))
+        head.load_state_dict(copy.deepcopy(head_state))
         body.cuda()
         head.cuda()
 
@@ -166,28 +176,7 @@ def main(params):
 
         # Optimizer and Learning Rate Scheduler
         # select optimizer
-        if params.ft_optimizer == 'SGD':
-            optimizer = torch.optim.SGD(opt_params, lr=params.ft_lr, momentum=0.9, dampening=0.9, weight_decay=0.001)
-        elif params.ft_optimizer == 'Adam':
-            optimizer = torch.optim.Adam(opt_params, lr=params.ft_lr, weight_decay=0.001)
-        elif params.ft_optimizer == 'RMSprop':
-            optimizer = torch.optim.RMSprop(opt_params, lr=params.ft_lr, momentum=0.9, weight_decay=0.001)
-        elif params.ft_optimizer == 'Adagrad':
-            optimizer = torch.optim.Adagrad(opt_params, lr=params.ft_lr, weight_decay=0.001)
-        elif params.ft_optimizer == 'RMSprop_no_momentum':
-            optimizer = torch.optim.RMSprop(opt_params, lr=params.ft_lr, weight_decay=0.001)
-
-        # select learning rate scheduler
-        if params.ft_scheduler == "CosAnneal":
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50) # T_max : 최대 iteration 횟수
-        elif params.ft_scheduler == "CosAnneal_WS":
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=1)
-        elif params.ft_scheduler == "Cycle":
-            scheduler = torch.optim.lr_scheduler.CyclicLR(optimizer, base_lr=0, step_size_up=5, max_lr=0.03, gamma=0.5, mode='exp_range')
-        elif params.ft_scheduler == 'Exp':
-            scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.5)
-
-
+        optimizer = torch.optim.SGD(opt_params, lr=params.ft_lr, momentum=0.9, dampening=0.9, weight_decay=0.001)
 
         # Labels are always [0, 0, ..., 1, ..., w-1]
         # x : input img, f : extracted feature of x, y : label
@@ -272,8 +261,8 @@ def main(params):
             # Test Using Query
             if params.ft_intermediate_test or epoch == n_epoch - 1:
                 with torch.no_grad():
-                    if not use_fixed_features:
-                        f_query = body.forward_features(x_query, params.ft_features)
+                    # if not use_fixed_features:
+                    #     f_query = body.forward_features(x_query, params.ft_features)
                     if torch_pretrained:
                         f_query = f_query.squeeze(-1).squeeze(-1)
                     p_query = head(f_query) # (75, 512)
