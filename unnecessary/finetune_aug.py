@@ -36,11 +36,6 @@ def main(params):
     bs = params.ft_batch_size
     n_data = params.n_way * params.n_shot
     n_epoch = int( math.ceil(n_data / 4) * params.ft_epochs / math.ceil(n_data / bs) )
-    print("\nCurrent batch size:", bs)
-    print("Current optimizer:", params.ft_optimizer)
-    print("Current learning rate:", params.ft_lr)
-    print("Currently updating :", params.ft_parts)
-    print("Current scheduler :", params.ft_scheduler)
     print()
     w = params.n_way
     s = params.n_shot
@@ -84,20 +79,17 @@ def main(params):
     train_history_path = get_ft_train_history_path(output_dir)
     test_history_path = get_ft_test_history_path(output_dir)
     if params.ft_augmentation:
-        train_history_path = train_history_path.replace('.csv', '_aug_{}.csv'.format(params.ft_augmentation))
-        test_history_path = test_history_path.replace('.csv', '_aug_{}.csv'.format(params.ft_augmentation))
+        train_history_path = train_history_path.replace('.csv', '_{}_aug.csv'.format(params.ft_augmentation))
+        test_history_path = test_history_path.replace('.csv', '_{}_aug.csv'.format(params.ft_augmentation))
     if params.ft_manifold:
-        train_history_path = train_history_path.replace('.csv', '_manifold_{}.csv'.format(params.ft_manifold))
-        test_history_path = test_history_path.replace('.csv', '_manifold_{}.csv'.format(params.ft_manifold))
-    if params.ft_mixup:
-        train_history_path = train_history_path.replace('.csv', '_mixup_{}.csv'.format(params.ft_mixup))
-        test_history_path = test_history_path.replace('.csv', '_mixup_{}.csv'.format(params.ft_mixup))
-    if params.ft_cutmix:
-        train_history_path = train_history_path.replace('.csv', '_cutmix_{}.csv'.format(params.ft_cutmix))
-        test_history_path = test_history_path.replace('.csv', '_cutmix_{}.csv'.format(params.ft_cutmix))
+        train_history_path = train_history_path.replace('.csv', '_manifold.csv')
+        test_history_path = test_history_path.replace('.csv', '_manifold.csv')
     if params.ft_label_smoothing != 0:
         train_history_path = train_history_path.replace('.csv', '_ls.csv')
         test_history_path = test_history_path.replace('.csv', '_ls.csv')
+    if params.ft_cutmix:
+        train_history_path = train_history_path.replace('.csv', '_cutmix2.csv')
+        test_history_path = test_history_path.replace('.csv', '_cutmix2.csv')
 
 
     #loss_history_path = os.path.join(output_dir, 'loss_history.csv')
@@ -139,27 +131,12 @@ def main(params):
         state = torch.load(body_state_path)
 
     # Loss function
-    loss_fn = nn.CrossEntropyLoss(label_smoothing=params.ft_label_smoothing).cuda()
+    criterion = nn.CrossEntropyLoss(label_smoothing=params.ft_label_smoothing).cuda()
 
     print('Starting fine-tune')
     if use_fixed_features:
         print('Running optimized fixed-feature fine-tuning (no augmentation, fixed body)')
     print()
-
-    # sucess 3, fail 3
-    if params.save_succ_fail : 
-        best1 = 0; best2 = 0; best3 = 0; best4 = 0; best5 = 0
-        worst1 = 1; worst2 = 1; worst3 = 1; worst4 = 1; worst5 = 1
-        best1_path = os.path.join(output_dir, "best1.txt")
-        best2_path = os.path.join(output_dir, "best2.txt")
-        best3_path = os.path.join(output_dir, "best3.txt")
-        best4_path = os.path.join(output_dir, "best4.txt")
-        best5_path = os.path.join(output_dir, "best5.txt")
-        worst1_path = os.path.join(output_dir, "worst1.txt")
-        worst2_path = os.path.join(output_dir, "worst2.txt")
-        worst3_path = os.path.join(output_dir, "worst3.txt")
-        worst4_path = os.path.join(output_dir, "worst4.txt")
-        worst5_path = os.path.join(output_dir, "worst5.txt")
 
     for episode in range(n_episodes):
         # Reset models for each episode
@@ -218,56 +195,50 @@ def main(params):
                 x_support, _ = next(support_iterator)
                 x_support = x_support.cuda()
 
-                # body를 통과한 extracted feature
-                # f_support shape : (25, 512)
+                # body를 통과
                 if torch_pretrained:
                     f_support = backbone(x_support)
                     f_query = backbone(x_query)
                 else:
-                    f_support = body.forward_features(x_support, params.ft_features)
+                    #f_support = body.forward_features(x_support, params.ft_features)
                     f_query = body.forward_features(x_query, params.ft_features)
-                    
 
         train_acc_history = []
         test_acc_history = []
         train_loss_history = []
         train_grad_history = []
 
-        n_iter = 0
         for epoch in range(n_epoch):
             # Train
             body.train()
             head.train()
 
-            if not use_fixed_features:  # load data every epoch
-                x_support, _ = next(support_iterator)
-                x_support = x_support.cuda() # [25, 3, 224, 224]
+            #lam = np.random.beta(1.0, 1.0) # 어차피 Uniform sampling
+            
+            lam = 1
+            x_support_copy = copy.deepcopy(x_support)
+            shuffled_y_support = y_support
+
+            if epoch >= 30:
+                lam = np.random.uniform(0.3, 0.7)
+                bbx1, bby1, bbx2, bby2 = rand_bbox(x_support.shape, lam)
+
+                rand_index = torch.randperm(x_support.shape[0])
+                shuffled_y_support = y_support[rand_index] # shuffled label
+                
+                x_support_copy[:,:,bbx1:bbx2, bby1:bby2] = x_support[rand_index,:,bbx1:bbx2, bby1:bby2]
+                with open(os.path.join(output_dir, "cutmix.pkl"), 'wb') as f :
+                    pickle.dump(x_support_copy, f)
+                lam = 1 - ((bbx2 - bbx1) * (bby2 - bby1) / (x_support.shape[-1] * x_support.shape[-2]))
+
+
+            with torch.no_grad():
+                f_support = body.forward_features(x_support_copy, params.ft_features)
+
 
             total_loss = 0
             correct = 0
             indices = np.random.permutation(w * s) # shuffle 5 * 5 or 1 * 5
-
-            v2_bool = epoch < 30 and (params.ft_mixup == "v2" or params.ft_cutmix == "v2")
-            v3_bool = params.ft_mixup == "v3" or params.ft_cutmix == "v3"
-            mix_bool = (params.ft_mixup or params.ft_cutmix) and not v2_bool
-            x_support_copy = copy.deepcopy(x_support)
-
-            # cutmix & mixup
-            if mix_bool:
-                lam = np.random.beta(1.0, 1.0) # 어차피 Uniform sampling
-                bbx1, bby1, bbx2, bby2 = rand_bbox(x_support.shape, lam)
-                
-                rand_index = torch.randperm(x_support.shape[0])
-                shuffled_y_support = y_support[rand_index] # shuffled label
-                
-            if params.ft_cutmix and not v2_bool: # recalculate ratio of img b by its area
-                x_support_copy[:,:,bbx1:bbx2, bby1:bby2] = x_support[rand_index,:,bbx1:bbx2, bby1:bby2]
-                lam = 1 - ((bbx2 - bbx1) * (bby2 - bby1) / (x_support.shape[-1] * x_support.shape[-2]))
-            elif params.ft_mixup and not v2_bool:
-                x_support_copy = lam * x_support[:,:,:] + (1-lam) * x_support[rand_index,:,:]
-
-            with torch.no_grad():
-                f_support_mixed = body.forward_features(x_support_copy, params.ft_features)
 
             # iteration 25/bs(5shot) or 5/bs(1shot)
             for i in range(support_batches):
@@ -275,67 +246,33 @@ def main(params):
                 end_index = min(i * bs + bs, w * s)
                 batch_indices = indices[start_index:end_index]
                 y = y_support[batch_indices] # label of support set
-
+                y_mix = shuffled_y_support[batch_indices]
+ 
                 if use_fixed_features:
-                    if mix_bool:
-                        f = f_support_mixed[batch_indices]
-                        y_mix = shuffled_y_support[batch_indices]
-                    else:
-                        f = f_support[batch_indices]
+                    f = f_support[batch_indices]
                 else: # if use augmentation or update body
                     f = body.forward_features(x_support[batch_indices], params.ft_features)
-
-                if v3_bool:
-                    f = torch.concat([f_support[batch_indices], f])
-                    y = torch.concat([y_support[batch_indices], y_support[batch_indices]])
-                    y_mix = torch.concat([y_support[batch_indices], y_mix])
-
+            
                 if torch_pretrained:
                     f = f.squeeze(2).squeeze(2)
-                
-                # manifold(representation) augmentation
-                if params.ft_manifold == 'v1':  # only 2 mins to 0
-                    feat_mask = torch.ones_like(f)
-                    mins = torch.topk(torch.abs(f), k=2, dim=1, largest=False).indices
-                    for i in range(len(mins)):
-                        feat_mask[i][mins[i]] = 0
-                    f = f * feat_mask
-                elif params.ft_manifold == 'v2': # mins for the num of epoch to 0 
-                    feat_mask = torch.ones_like(f)
-                    mins = torch.topk(torch.abs(f), k=epoch, dim=1, largest=False).indices
-                    for i in range(len(mins)):
-                        feat_mask[i][mins[i]] = 0
-                    f = f * feat_mask
-                elif params.ft_manifold == 'v3': # mins for the num of epoch//2 to 0
-                    feat_mask = torch.ones_like(f)
-                    mins = torch.topk(torch.abs(f), k=epoch//2, dim=1, largest=False).indices
-                    for i in range(len(mins)):
-                        feat_mask[i][mins[i]] = 0
-                    f = f * feat_mask
-                else:
-                    if params.ft_manifold is not None:
-                        raise ValueError('Invalid version number of manifold augmentation')
 
                 # head 거치기
                 p = head(f)
 
-                correct += torch.eq(y, p.argmax(dim=1)).sum()
-                if mix_bool:
-                    loss = loss_fn(p, y) * lam + loss_fn(p, y_mix) * (1. - lam)
-                else:
-                    loss = loss_fn(p, y)
+                #correct += torch.eq(y, p.argmax(dim=1)).sum()
+                #loss = loss_fn(p, y)
+                loss = criterion(p, y) * lam + criterion(p, y_mix) * (1. - lam)
 
                 optimizer.zero_grad() # pytorch에서는 이걸 안해주면 gradient를 계속 누적함 (각 Iteration이 끝나면 초기화해줌)
                 loss.backward()
                 optimizer.step()
-                n_iter = n_iter+1;
 
                 total_loss += loss.item()
 
             if params.ft_scheduler != "None":
                 scheduler.step()
             train_loss = total_loss / support_batches
-            train_acc = correct / (w * s)
+            #train_acc = correct / (w * s)
 
             # Evaluation
             body.eval()
@@ -352,13 +289,14 @@ def main(params):
                 test_acc = torch.eq(y_query, p_query.argmax(dim=1)).sum() / (w * q)
             else:
                 test_acc = torch.tensor(0)
+
             
             print_epoch_logs = False
             if print_epoch_logs and (epoch + 1) % 10 == 0:
-                fmt = 'Epoch {:03d}: Loss={:6.3f} Train ACC={:6.3f} Test ACC={:6.3f}'
-                print(fmt.format(epoch + 1, train_loss, train_acc, test_acc))
+                fmt = 'Epoch {:03d}: Loss={:6.3f} Test ACC={:6.3f}'
+                print(fmt.format(epoch + 1, train_loss, test_acc*100))
 
-            train_acc_history.append(train_acc.item())
+            #train_acc_history.append(train_acc.item())
             test_acc_history.append(test_acc.item())
             #train_loss_history.append(train_loss)
 
@@ -367,101 +305,16 @@ def main(params):
         # torch.save(body.state_dict(), output_dir+'/{}epoch_body.pt'.format(n_epoch))
 
         #print("Total iterations for {} epochs : {}".format(n_epoch, n_iter))
-        df_train.loc[episode + 1] = train_acc_history
-        df_train.to_csv(train_history_path)
+        #df_train.loc[episode + 1] = train_acc_history
+        #df_train.to_csv(train_history_path)
         df_test.loc[episode + 1] = test_acc_history
         df_test.to_csv(test_history_path)
         # df_loss.loc[episode + 1] = train_loss_history
         # df_loss.to_csv(loss_history_path)
 
-        fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_acc={:6.2f}'
-        print(fmt.format(episode, train_loss, train_acc_history[-1] * 100, test_acc_history[-1] * 100))
+        fmt = 'Episode {:03d}: train_loss={:6.4f} test_acc={:6.2f}'
+        print(fmt.format(episode, train_loss, test_acc_history[-1] * 100))
 
-
-        if params.save_succ_fail:
-            # save success 
-            if test_acc > best1:
-                best1 = test_acc
-                with open(best1_path, 'wb') as f :
-                    pickle.dump("{}".format(test_acc*100), f)
-                    pickle.dump(x_support, f)
-                    pickle.dump(y_support, f)
-                    pickle.dump(x_query, f)
-                    pickle.dump(y_query, f)
-            elif test_acc > best2:
-                best2 = test_acc
-                with open(best2_path, 'wb') as f : 
-                    pickle.dump("{}".format(test_acc*100), f)
-                    pickle.dump(x_support, f)
-                    pickle.dump(y_support, f)
-                    pickle.dump(x_query, f)
-                    pickle.dump(y_query, f)
-            elif test_acc > best3:
-                best3 = test_acc
-                with open(best3_path, 'wb') as f : 
-                    pickle.dump("{}".format(test_acc*100), f)
-                    pickle.dump(x_support, f)
-                    pickle.dump(y_support, f)
-                    pickle.dump(x_query, f)
-                    pickle.dump(y_query, f)
-            elif test_acc > best4:
-                best4 = test_acc
-                with open(best4_path, 'wb') as f : 
-                    pickle.dump("{}".format(test_acc*100), f)
-                    pickle.dump(x_support, f)
-                    pickle.dump(y_support, f)
-                    pickle.dump(x_query, f)
-                    pickle.dump(y_query, f)
-            elif test_acc > best5:
-                best5 = test_acc
-                with open(best5_path, 'wb') as f : 
-                    pickle.dump("{}".format(test_acc*100), f)
-                    pickle.dump(x_support, f)
-                    pickle.dump(y_support, f)
-                    pickle.dump(x_query, f)
-                    pickle.dump(y_query, f)
-            
-            # save failed
-            if test_acc < worst1:
-                worst1 = test_acc
-                with open(worst1_path, 'wb') as f :
-                    pickle.dump("{}".format(test_acc*100), f)
-                    pickle.dump(x_support, f)
-                    pickle.dump(y_support, f)
-                    pickle.dump(x_query, f)
-                    pickle.dump(y_query, f)
-            elif test_acc < worst2:
-                worst2 = test_acc
-                with open(worst2_path, 'wb') as f : 
-                    pickle.dump("{}".format(test_acc*100), f)
-                    pickle.dump(x_support, f)
-                    pickle.dump(y_support, f)
-                    pickle.dump(x_query, f)
-                    pickle.dump(y_query, f)
-            elif test_acc < worst3:
-                worst3 = test_acc
-                with open(worst3_path, 'wb') as f : 
-                    pickle.dump("{}".format(test_acc*100), f)
-                    pickle.dump(x_support, f)
-                    pickle.dump(y_support, f)
-                    pickle.dump(x_query, f)
-                    pickle.dump(y_query, f)
-            elif test_acc < worst4:
-                worst4 = test_acc
-                with open(worst4_path, 'wb') as f : 
-                    pickle.dump("{}".format(test_acc*100), f)
-                    pickle.dump(x_support, f)
-                    pickle.dump(y_support, f)
-                    pickle.dump(x_query, f)
-                    pickle.dump(y_query, f)
-            elif test_acc < worst5:
-                worst5 = test_acc
-                with open(worst5_path, 'wb') as f : 
-                    pickle.dump("{}".format(test_acc*100), f)
-                    pickle.dump(x_support, f)
-                    pickle.dump(y_support, f)
-                    pickle.dump(x_query, f)
-                    pickle.dump(y_query, f)
 
     fmt = 'Final Results: Acc={:5.2f} Std={:5.2f}'
     print(fmt.format(df_test.mean()[-1] * 100, 1.96 * df_test.std()[-1] / np.sqrt(n_episodes) * 100))
