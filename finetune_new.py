@@ -26,6 +26,11 @@ from elastic_weight_consolidation import ElasticWeightConsolidation
 #os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 def main(params):
+    # ft_scheduler configuration 
+    scheduler_none = params.ft_scheduler_start == params.ft_scheduler_end
+    if not scheduler_none and (params.ft_mixup != 'v1' and params.ft_cutmix != 'v1'):
+        raise ValueError("You should set ft_scheduler_start == ft_scheduler_end in order to use other versions")
+
     base_output_dir = get_output_directory(params) 
     output_dir = get_ft_output_directory(params)
     torch_pretrained = ("torch" in params.backbone)
@@ -39,11 +44,6 @@ def main(params):
     bs = params.ft_batch_size
     n_data = params.n_way * params.n_shot
     n_epoch = int( math.ceil(n_data / 4) * params.ft_epochs / math.ceil(n_data / bs) )
-    # print("\nCurrent batch size:", bs)
-    # print("Current optimizer:", params.ft_optimizer)
-    # print("Current learning rate:", params.ft_lr)
-    # print("Currently updating :", params.ft_parts)
-    # print("Current scheduler :", params.ft_lr_scheduler)
     print()
     w = params.n_way
     s = params.n_shot
@@ -59,6 +59,9 @@ def main(params):
             raise ValueError(
                 'Feature selector "{}" is not supported for model "{}"'.format(params.ft_features, params.model))
 
+    aug_path = os.path.join(output_dir, "check_aug")
+    clean_path = os.path.join(output_dir, "check_clean")
+
     # Dataloaders
     # Note that both dataloaders sample identical episodes, via episode_seed
     support_epochs = 1 if use_fixed_features else n_epoch
@@ -68,12 +71,21 @@ def main(params):
                                                      unlabeled_ratio=params.unlabeled_ratio,
                                                      num_workers=params.num_workers,
                                                      split_seed=params.split_seed, episode_seed=params.ft_episode_seed)
+    
     query_loader = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=False,
                                                    n_query_shot=q, n_episodes=n_episodes, augmentation=None,
                                                    unlabeled_ratio=params.unlabeled_ratio,
                                                    num_workers=params.num_workers,
                                                    split_seed=params.split_seed,
                                                    episode_seed=params.ft_episode_seed)
+    if params.ft_augmentation:
+        support_loader_clean = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=True,
+                                                     n_query_shot=q, n_episodes=n_episodes, n_epochs=support_epochs,
+                                                     augmentation=None,
+                                                     unlabeled_ratio=params.unlabeled_ratio,
+                                                     num_workers=params.num_workers,
+                                                     split_seed=params.split_seed, episode_seed=params.ft_episode_seed)
+        support_iterator_clean = iter(support_loader_clean)
 
     # 값이 맞게끔 보증! 
     assert (len(query_loader) == n_episodes)
@@ -86,6 +98,7 @@ def main(params):
     # Output (history, params)
     train_history_path = get_ft_train_history_path(output_dir)
     test_history_path = get_ft_test_history_path(output_dir)
+
     if params.ft_augmentation:
         train_history_path = train_history_path.replace('.csv', '_aug_{}.csv'.format(params.ft_augmentation))
         test_history_path = test_history_path.replace('.csv', '_aug_{}.csv'.format(params.ft_augmentation))
@@ -101,8 +114,12 @@ def main(params):
     if params.ft_label_smoothing != 0:
         train_history_path = train_history_path.replace('.csv', '_ls.csv')
         test_history_path = test_history_path.replace('.csv', '_ls.csv')
+    if params.ft_scheduler_start != params.ft_scheduler_end:
+        train_history_path = train_history_path.replace('.csv', '_{}_{}.csv'.format(params.ft_scheduler_start, params.ft_scheduler_end))
+        test_history_path = test_history_path.replace('.csv', '_{}_{}.csv'.format(params.ft_scheduler_start, params.ft_scheduler_end))
 
     loss_history_path = train_history_path.replace('train_history', 'loss_history')
+    train_clean_history_path = test_history_path.replace('test_history', 'test_clean_history')
     params_path = get_ft_params_path(output_dir)
 
     print('Saving finetune params to {}'.format(params_path))
@@ -117,6 +134,8 @@ def main(params):
     df_train = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
                             columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
     df_test = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
+                           columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
+    df_train_clean = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
                            columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
     df_loss = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
                            columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
@@ -213,8 +232,9 @@ def main(params):
 
         train_acc_history = []
         test_acc_history = []
+        train_acc_clean_history = []
         train_loss_history = []
-        train_grad_history = []
+        
 
         n_iter = 0
         for epoch in range(n_epoch):
@@ -223,16 +243,25 @@ def main(params):
             head.train()
 
             if not use_fixed_features:  # load data every epoch
-                x_support, _ = next(support_iterator)
-                x_support = x_support.cuda() # [25, 3, 224, 224]
+                x_support, _ = next(support_iterator) # [25, 3, 224, 224]
+                x_support = x_support.cuda() 
+
+                if params.ft_clean_test:
+                    x_support_clean, _ = next(support_iterator_clean)
+                    # check if aug and clean imgs are the same 
+                    # with open(aug_path+'_{}.txt'.format(epoch), 'wb') as f :
+                    #     pickle.dump(x_support, f)
+                    # with open(clean_path+'_{}.txt'.format(epoch), 'wb') as f :
+                    #     pickle.dump(x_support_clean, f)
+                    x_support_clean = x_support_clean.cuda()
 
             total_loss = 0
             correct = 0
             indices = np.random.permutation(w * s) # shuffle 5 * 5 or 1 * 5
-
-            v2_bool = epoch < 30 and (params.ft_mixup == "v2" or params.ft_cutmix == "v2")
-            v2_reverse_bool = epoch >= 70 and (params.ft_mixup == "v2_reverse" or params.ft_cutmix == "v2_reverse")
-            mix_bool = (params.ft_mixup or params.ft_cutmix) and not v2_bool and not v2_reverse_bool
+            
+            aug_bool = (epoch < params.ft_scheduler_end and epoch >= params.ft_scheduler_start)
+            #v2_reverse_bool = epoch >= 70 and (params.ft_mixup == "v2_reverse" or params.ft_cutmix == "v2_reverse")
+            mix_bool = (params.ft_mixup or params.ft_cutmix) and aug_bool
             x_support_aug = copy.deepcopy(x_support)
 
             # cutmix & mixup
@@ -331,6 +360,14 @@ def main(params):
             body.eval()
             head.eval()
 
+            # Test Using Clean Support
+            if params.ft_clean_test:
+                with torch.no_grad():
+                    f_support_clean = body.forward_features(x_support_clean, params.ft_features)
+                    pred_clean = head(f_support_clean) # (75, 512)
+                train_acc_clean = torch.eq(y_support, pred_clean.argmax(dim=1)).sum() / (w * s)
+                train_acc_clean_history.append(train_acc_clean.item())
+
             # Test Using Query
             if params.ft_intermediate_test or epoch == n_epoch - 1:
                 with torch.no_grad():
@@ -364,8 +401,13 @@ def main(params):
         df_loss.loc[episode + 1] = train_loss_history
         #df_loss.to_csv(loss_history_path)
 
-        fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_acc={:6.2f}'
-        print(fmt.format(episode, train_loss, train_acc_history[-1] * 100, test_acc_history[-1] * 100))
+        if params.ft_clean_test:
+            df_train_clean.loc[episode + 1] = train_acc_clean_history
+            fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} clean_train_acc={:6.2f} test_acc={:6.2f}'
+            print(fmt.format(episode, train_loss, train_acc_history[-1] * 100, train_acc_clean_history[-1] * 100, test_acc_history[-1] * 100))
+        else: 
+            fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_acc={:6.2f}'
+            print(fmt.format(episode, train_loss, train_acc_history[-1] * 100, test_acc_history[-1] * 100))
 
     fmt = 'Final Results: Acc={:5.2f} Std={:5.2f}'
     print(fmt.format(df_test.mean()[-1] * 100, 1.96 * df_test.std()[-1] / np.sqrt(n_episodes) * 100))
@@ -376,6 +418,8 @@ def main(params):
     df_train.to_csv(train_history_path)
     df_test.to_csv(test_history_path)
     df_loss.to_csv(loss_history_path)
+    if params.ft_clean_test:
+        df_train_clean.to_csv(train_clean_history_path)
 
 
 if __name__ == '__main__':

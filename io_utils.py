@@ -75,6 +75,7 @@ def parse_args(mode):
     parser.add_argument('--ft_features', default=None, type=str, help='Specify which features to use from the base model (see model/base.py)')
     parser.add_argument('--ft_intermediate_test', action='store_true', help='Evaluate on query set during fine-tuning')
     parser.add_argument('--ft_episode_seed', default=0, type=int)
+    parser.add_argument('--ft_clean_test', action='store_true', help ='Test on nonaugmented samples every epoch')
     parser.add_argument('--ft_manifold', default=None, type=str, help="select version : {'v1', 'v2', 'v3', 'mixup'}")
     parser.add_argument('--ft_cutmix', default=None, type=str, help="select version : {'v1', 'v2', 'v2_reverse', 'v3'}")
     parser.add_argument('--ft_mixup', default=None, type=str, help="select version : {'v1', 'v2', 'v2_reverse', 'v3'}")
