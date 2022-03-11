@@ -23,8 +23,6 @@ from elastic_weight_consolidation import ElasticWeightConsolidation
 # base_output_dir : #./logs/output_baseline/mini/resnet10_simclr_LS_default/mini_test/05way_005shot_head_default
 # 둘다 makedir true
 
-#os.environ["CUDA_VISIBLE_DEVICES"]="1"
-
 def main(params):
     base_output_dir = get_output_directory(params) 
     output_dir = get_ft_output_directory(params)
@@ -110,8 +108,8 @@ def main(params):
     #print('Saving finetune validation history to {}'.format(train_history_path))
     print()
     # saving parameters on this json file
-    with open(params_path, 'w') as input:
-        json.dump(vars(params), input, indent=4)
+    with open(params_path, 'w') as f:
+        json.dump(vars(params), f, indent=4)
     
     # 저장할 dataframe
     df_train = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
@@ -233,85 +231,85 @@ def main(params):
             v2_bool = epoch < 30 and (params.ft_mixup == "v2" or params.ft_cutmix == "v2")
             v2_reverse_bool = epoch >= 70 and (params.ft_mixup == "v2_reverse" or params.ft_cutmix == "v2_reverse")
             mix_bool = (params.ft_mixup or params.ft_cutmix) and not v2_bool and not v2_reverse_bool
-            x_support_aug = copy.deepcopy(x_support)
+            x_support_copy = copy.deepcopy(x_support)
 
             # cutmix & mixup
-            if mix_bool or params.ft_manifold == 'mixup':
+            if mix_bool:
                 lam = np.random.beta(1.0, 1.0) # 어차피 Uniform sampling
                 bbx1, bby1, bbx2, bby2 = rand_bbox(x_support.shape, lam)
                 
-                #rand_index = np.array([0, 3, 4, 2, 1])
-                #indices = np.array([2, 1, 0, 3, 4])
                 rand_index = torch.randperm(x_support.shape[0])
-                y_shuffled = y_support[rand_index] # shuffled label
+                shuffled_y_support = y_support[rand_index] # shuffled label
                 
             if params.ft_cutmix and mix_bool: # recalculate ratio of img b by its area
-                x_support_aug[:,:,bbx1:bbx2, bby1:bby2] = x_support[rand_index,:,bbx1:bbx2, bby1:bby2]
+                x_support_copy[:,:,bbx1:bbx2, bby1:bby2] = x_support[rand_index,:,bbx1:bbx2, bby1:bby2]
                 lam = 1 - ((bbx2 - bbx1) * (bby2 - bby1) / (x_support.shape[-1] * x_support.shape[-2]))
             elif params.ft_mixup and mix_bool:
-                x_support_aug = lam * x_support[:,:,:] + (1. - lam) * x_support[rand_index,:,:]
+                x_support_copy = lam * x_support[:,:,:] + (1. - lam) * x_support[rand_index,:,:]
 
             with torch.no_grad():
-                f_support_aug = body.forward_features(x_support_aug, params.ft_features)
+                f_support_mixed = body.forward_features(x_support_copy, params.ft_features)
 
             # iteration 25/bs(5shot) or 5/bs(1shot)
             for i in range(support_batches):
                 start_index = i * bs
                 end_index = min(i * bs + bs, w * s)
                 batch_indices = indices[start_index:end_index]
-                y_batch = y_support[batch_indices] # label of support set
+                y = y_support[batch_indices] # label of support set
 
                 if use_fixed_features:
-                    if mix_bool or params.ft_manifold == 'mixup':
-                        input = f_support_aug[batch_indices, :]
-                        y_shuffled_batch = y_shuffled[batch_indices]
+                    if mix_bool:
+                        f = f_support_mixed[batch_indices]
+                        y_mix = shuffled_y_support[batch_indices]
                     else:
-                        input = f_support[batch_indices]
+                        f = f_support[batch_indices]
                 else: # if use augmentation or update body
-                    input = body.forward_features(x_support[batch_indices], params.ft_features)
+                    f = body.forward_features(x_support[batch_indices], params.ft_features)
 
-                if (params.ft_mixup == "v3" or params.ft_cutmix == "v3"): # concat original self
-                    input = torch.concat([f_support[batch_indices], input])
-                    y_batch = torch.concat([y_support[batch_indices], y_support[batch_indices]])
-                    y_shuffled_batch = torch.concat([y_support[batch_indices], y_shuffled_batch])
+                if (params.ft_mixup == "v3" or params.ft_cutmix == "v3"):
+                    f = torch.concat([f_support[batch_indices], f])
+                    y = torch.concat([y_support[batch_indices], y_support[batch_indices]])
+                    y_mix = torch.concat([y_support[batch_indices], y_mix])
+
+                if torch_pretrained:
+                    f = f.squeeze(2).squeeze(2)
                 
                 # manifold(representation) augmentation
                 if params.ft_manifold == 'v1':  # only 2 mins to 0
-                    feat_mask = torch.ones_like(input)
-                    mins = torch.topk(torch.abs(input), k=2, dim=1, largest=False).indices
+                    feat_mask = torch.ones_like(f)
+                    mins = torch.topk(torch.abs(f), k=2, dim=1, largest=False).indices
                     for i in range(len(mins)):
                         feat_mask[i][mins[i]] = 0
-                    input = input * feat_mask
+                    f = f * feat_mask
                 elif params.ft_manifold == 'v2': # mins for the num of epoch to 0 
-                    feat_mask = torch.ones_like(input)
-                    mins = torch.topk(torch.abs(input), k=epoch, dim=1, largest=False).indices
+                    feat_mask = torch.ones_like(f)
+                    mins = torch.topk(torch.abs(f), k=epoch, dim=1, largest=False).indices
                     for i in range(len(mins)):
                         feat_mask[i][mins[i]] = 0
-                    input = input * feat_mask
+                    f = f * feat_mask
                 elif params.ft_manifold == 'v3': # mins for the num of epoch//2 to 0
-                    feat_mask = torch.ones_like(input)
-                    mins = torch.topk(torch.abs(input), k=epoch//2, dim=1, largest=False).indices
+                    feat_mask = torch.ones_like(f)
+                    mins = torch.topk(torch.abs(f), k=epoch//2, dim=1, largest=False).indices
                     for i in range(len(mins)):
                         feat_mask[i][mins[i]] = 0
-                    input = input * feat_mask
+                    f = f * feat_mask
                 elif params.ft_manifold == 'mixup': # mins for the num of epoch//2 to 0
-                    input = lam * input[:,:] + (1. - lam) * input[rand_index[batch_indices],:]
+                    lam = np.random.beta(1.0, 1.0)
+                    rand_index = torch.randperm(x_support.shape[0])
+                    y_mix = y[rand_index]
+                    f = lam * f[:,:] + (1. - lam) * f[rand_index,:]
                 else:
                     if params.ft_manifold is not None:
                         raise ValueError('Invalid version number of manifold augmentation')
 
-
-                if torch_pretrained:
-                    input = input.squeeze(2).squeeze(2)
-
                 # head 거치기
-                pred = head(input)
+                p = head(f)
 
-                correct += torch.eq(y_batch, pred.argmax(dim=1)).sum()
+                correct += torch.eq(y, p.argmax(dim=1)).sum()
                 if mix_bool or params.ft_manifold == 'mixup':
-                    loss = criterion(pred, y_batch) * lam + criterion(pred, y_shuffled_batch) * (1. - lam)
+                    loss = criterion(p, y) * lam + criterion(p, y_mix) * (1. - lam)
                 else:
-                    loss = criterion(pred, y_batch)
+                    loss = criterion(p, y)
                 
                 if params.ft_EWC:
                     loss = loss + ewc._compute_consolidation_loss(1000000)
@@ -322,7 +320,7 @@ def main(params):
 
                 total_loss += loss.item()
 
-            if params.ft_lr_scheduler:
+            if params.ft_lr_scheduler != "None":
                 scheduler.step()
             train_loss = total_loss / support_batches
             train_acc = correct / (w * s)
@@ -358,11 +356,11 @@ def main(params):
 
         #print("Total iterations for {} epochs : {}".format(n_epoch, n_iter))
         df_train.loc[episode + 1] = train_acc_history
-        #df_train.to_csv(train_history_path)
+        df_train.to_csv(train_history_path)
         df_test.loc[episode + 1] = test_acc_history
-        #df_test.to_csv(test_history_path)
+        df_test.to_csv(test_history_path)
         df_loss.loc[episode + 1] = train_loss_history
-        #df_loss.to_csv(loss_history_path)
+        df_loss.to_csv(loss_history_path)
 
         fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_acc={:6.2f}'
         print(fmt.format(episode, train_loss, train_acc_history[-1] * 100, test_acc_history[-1] * 100))

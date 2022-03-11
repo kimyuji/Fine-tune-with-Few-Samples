@@ -1,8 +1,7 @@
 # Instability of Fine-TUning 
 
 
-## Jupyter Notebook File info 
-
+## Jupyter Notebook File info (in "unnecessary" Folder)
 
 - `analysis_domain_diff.ipynb`<br>
 calculate domain difference/similarity across datasets <br>

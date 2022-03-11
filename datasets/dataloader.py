@@ -32,7 +32,7 @@ class ToSiamese:
     def __call__(self, img):
         return self.transform(img), self.transform2(img)
 
-
+# o
 def get_default_dataset(dataset_name: str, augmentation: str, image_size: int = None, siamese=False):
     """
     :param augmentation: One of {'base', 'strong', None, 'none'}
@@ -51,7 +51,7 @@ def get_default_dataset(dataset_name: str, augmentation: str, image_size: int = 
         transform = ToSiamese(transform)
     return dataset_cls(transform=transform)
 
-
+# o
 def get_split_dataset(dataset_name: str, augmentation: str, image_size: int = None, siamese=False,
                       unlabeled_ratio: int = 20, seed=1):
     # If cache details change, just remove the cache – it's not worth the maintenance TBH.
@@ -71,7 +71,7 @@ def get_split_dataset(dataset_name: str, augmentation: str, image_size: int = No
 
     return unlabeled, labeled
 
-
+# x
 def get_dataloader(dataset_name: str, augmentation: str, batch_size: int, image_size: int = None, siamese=False,
                    num_workers=2, shuffle=True, drop_last=False):
     dataset = get_default_dataset(dataset_name=dataset_name, augmentation=augmentation, image_size=image_size,
@@ -79,7 +79,7 @@ def get_dataloader(dataset_name: str, augmentation: str, batch_size: int, image_
     return torch.utils.data.DataLoader(dataset, batch_size=batch_size, num_workers=num_workers,
                                        shuffle=shuffle, drop_last=drop_last)
 
-
+# x
 def get_split_dataloader(dataset_name: str, augmentation: str, batch_size: int, image_size: int = None, siamese=False,
                          unlabeled_ratio: int = 20, num_workers=2, shuffle=True, drop_last=False, seed=1):
     unlabeled, labeled = get_split_dataset(dataset_name, augmentation, image_size=image_size, siamese=siamese,
@@ -91,7 +91,7 @@ def get_split_dataloader(dataset_name: str, augmentation: str, batch_size: int, 
         dataloaders.append(dataloader)
     return dataloaders
 
-
+# x
 def get_labeled_dataloader(dataset_name: str, augmentation: str, batch_size: int, image_size: int = None, siamese=False,
                            unlabeled_ratio: int = 20, num_workers=2, shuffle=True, drop_last=False, split_seed=1):
     unlabeled, labeled = get_split_dataloader(dataset_name, augmentation, batch_size, image_size, siamese=siamese,
@@ -100,7 +100,7 @@ def get_labeled_dataloader(dataset_name: str, augmentation: str, batch_size: int
                                               seed=split_seed)
     return labeled
 
-
+# x
 def get_unlabeled_dataloader(dataset_name: str, augmentation: str, batch_size: int, image_size: int = None,
                              siamese=False, unlabeled_ratio: int = 20, num_workers=2,
                              shuffle=True, drop_last=True, split_seed=1):
@@ -110,7 +110,7 @@ def get_unlabeled_dataloader(dataset_name: str, augmentation: str, batch_size: i
                                               seed=split_seed)
     return unlabeled
 
-
+# x
 def get_episodic_dataloader(dataset_name: str, n_way: int, n_shot: int, support: bool, n_episodes=600, n_query_shot=15,
                             augmentation: str = None, image_size: int = None, num_workers=2, n_epochs=1,
                             episode_seed=0):
@@ -120,7 +120,7 @@ def get_episodic_dataloader(dataset_name: str, n_way: int, n_shot: int, support:
                                    n_episodes=n_episodes, support=support, n_epochs=n_epochs, seed=episode_seed)
     return torch.utils.data.DataLoader(dataset, num_workers=num_workers, batch_sampler=sampler)
 
-
+# o
 def get_labeled_episodic_dataloader(dataset_name: str, n_way: int, n_shot: int, support: bool, n_episodes=600,
                                     n_query_shot=15, n_epochs=1, augmentation: str = None, image_size: int = None,
                                     unlabeled_ratio: int = 20, num_workers=2, split_seed=1, episode_seed=0):

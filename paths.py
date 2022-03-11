@@ -135,8 +135,8 @@ def get_ft_output_directory(params, makedirs=True, experiment=False):
     if params.ft_lr != 0.01 :
         path = get_output_directory(params, makedirs=makedirs).replace("output", "output_{}".format(params.ft_lr))
         path = path.replace("baseline", "learning_rate")
-    if params.ft_scheduler != 'None':
-        path = get_output_directory(params, makedirs=makedirs).replace("output", "output_{}".format(params.ft_scheduler))
+    if params.ft_lr_scheduler:
+        path = get_output_directory(params, makedirs=makedirs).replace("output", "output_{}".format(params.ft_lr_scheduler))
         path = path.replace("baseline", "lr_scheduler")        
 
     if not params.ut:

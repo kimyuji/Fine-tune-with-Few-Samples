@@ -26,6 +26,11 @@ from elastic_weight_consolidation import ElasticWeightConsolidation
 #os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 def main(params):
+    # ft_scheduler configuration 
+    scheduler_none = params.ft_scheduler_start == params.ft_scheduler_end
+    if not scheduler_none and (params.ft_mixup != 'v1' and params.ft_cutmix != 'v1'):
+        raise ValueError("You should set ft_scheduler_start == ft_scheduler_end in order to use other versions")
+
     base_output_dir = get_output_directory(params) 
     output_dir = get_ft_output_directory(params)
     torch_pretrained = ("torch" in params.backbone)
@@ -229,10 +234,10 @@ def main(params):
             total_loss = 0
             correct = 0
             indices = np.random.permutation(w * s) # shuffle 5 * 5 or 1 * 5
-
-            v2_bool = epoch < 30 and (params.ft_mixup == "v2" or params.ft_cutmix == "v2")
-            v2_reverse_bool = epoch >= 70 and (params.ft_mixup == "v2_reverse" or params.ft_cutmix == "v2_reverse")
-            mix_bool = (params.ft_mixup or params.ft_cutmix) and not v2_bool and not v2_reverse_bool
+            
+            aug_bool = (epoch < params.ft_scheduler_end and epoch >= params.ft_scheduler_start)
+            #v2_reverse_bool = epoch >= 70 and (params.ft_mixup == "v2_reverse" or params.ft_cutmix == "v2_reverse")
+            mix_bool = (params.ft_mixup or params.ft_cutmix) and aug_bool
             x_support_aug = copy.deepcopy(x_support)
 
             # cutmix & mixup

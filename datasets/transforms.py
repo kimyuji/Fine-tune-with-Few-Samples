@@ -33,8 +33,8 @@ def parse_transform(transform: str, image_size=224, **transform_kwargs):
 
 def get_composed_transform(augmentation: str = None, image_size=224) -> transforms.Compose:
     if augmentation == 'base':
-        transform_list = ['RandomResizedCrop', 'RandomColorJitter', 'RandomHorizontalFlip', 'ToTensor',
-                          'Normalize']
+        transform_list = ['RandomResizedCrop', 'RandomHorizontalFlip', 'ToTensor',
+                          'Normalize'] # 'RandomColorJitter',
     elif augmentation == 'strong':
         transform_list = ['RandomResizedCrop', 'RandomColorJitter', 'RandomGrayscale', 'RandomGaussianBlur',
                           'RandomHorizontalFlip', 'ToTensor', 'Normalize']
@@ -49,14 +49,15 @@ def get_composed_transform(augmentation: str = None, image_size=224) -> transfor
 
 # get 4 corner points of patches
 def rand_bbox(size, lam): # size : [B, C, W, H]
-    W = size[2] # 이미지의 width
-    H = size[3] # 이미지의 height
-    cut_rat = np.sqrt(1. - lam)  # 패치 크기의 비율 정하기
-    cut_w = np.int(W * cut_rat)  # 패치의 너비
-    cut_h = np.int(H * cut_rat)  # 패치의 높이
+    W = size[2] # 224
+    H = size[3] # 224
 
-    # uniform
-    # 기존 이미지의 크기에서 랜덤하게 값을 가져옵니다.(중간 좌표 추출)
+    cut_rat = np.sqrt(1. - lam)  # ratio of patch size 
+    cut_w = np.int(W * cut_rat)  # patch width
+    cut_h = np.int(H * cut_rat)  # patch height
+    # square patch
+
+    # 중간 좌표 추출 (uniform sampling)
     cx = np.random.randint(W)
     cy = np.random.randint(H)
 
