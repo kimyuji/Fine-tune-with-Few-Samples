@@ -56,7 +56,7 @@ def parse_args(mode):
     parser.add_argument('--epochs', default=1000, type=int, help='Pre-training epochs.')  # similar to aug_mode
     parser.add_argument('--model_save_interval', default=50, type=int, help='Save model state every N epochs during pre-training.')  # similar to aug_mode
     parser.add_argument('--optimizer', default=None, type=str, help="Optimizer used during pre-training {'sgd', 'adam'}. Default if None")  # similar to aug_mode
-    parser.add_argument('--num_workers', default=2, type=int)
+    parser.add_argument('--num_workers', default=4, type=int)
 
     # New ft params
     parser.add_argument('--n_way', default=5, type=int)
@@ -70,19 +70,25 @@ def parse_args(mode):
     parser.add_argument('--ft_lr', default=0.01, type=float) # baseline: 0.01
     parser.add_argument('--ft_optimizer', default='SGD', type=str) # baseline: SGD
     parser.add_argument('--ft_lr_scheduler', default=None, type=str) # baseline: None
-    parser.add_argument('--ft_augmentation', default=None, type=str, help="Augmentation used for fine-tuning {None, 'base', 'strong'}")
+    
     parser.add_argument('--ft_parts', default='head', type=str, help="Where to fine-tune: {'full', 'body', 'head'}")
     parser.add_argument('--ft_features', default=None, type=str, help='Specify which features to use from the base model (see model/base.py)')
     parser.add_argument('--ft_intermediate_test', action='store_true', help='Evaluate on query set during fine-tuning')
     parser.add_argument('--ft_episode_seed', default=0, type=int)
+    # option for training
     parser.add_argument('--ft_clean_test', action='store_true', help ='Test on nonaugmented samples every epoch')
-    parser.add_argument('--ft_manifold', default=None, type=str, help="select version : {'v1', 'v2', 'v3', 'mixup'}")
-    parser.add_argument('--ft_cutmix', default=None, type=str, help="select version : {'v1', 'v2', 'v2_reverse', 'v3'}")
-    parser.add_argument('--ft_mixup', default=None, type=str, help="select version : {'v1', 'v2', 'v2_reverse', 'v3'}")
-    parser.add_argument('--ft_scheduler_start', default=0, type=int, help="Write start epoch of augmentation. If you want no augmentation, make sure you set ft_scheduler_start == ft_scheduler_end")
-    parser.add_argument('--ft_scheduler_end', default=0, type=int, help="Write end epoch of augmentation")
-    parser.add_argument('--ft_EWC', action='store_true', help='To prevent catastrophic forgetting')
+    parser.add_argument('--ft_with_clean', action='store_true', help="train augmented imgs with original imgs")
+    # augmentation options
+    parser.add_argument('--ft_augmentation', default=None, type=str, help="Augmentation used for fine-tuning {None, 'base', 'strong'}")
+    parser.add_argument('--ft_manifold', action='store_true', help="select version : {'v1', 'v2', 'v3', 'mixup', 'adaptive'}")
+    parser.add_argument('--ft_cutmix', action='store_true', help="select version : {'v1', 'v2', 'v2_reverse', 'v3', 'adaptive'}")
+    parser.add_argument('--ft_mixup', default=None, type=str, help="select version : {'v1', 'v2', 'v2_reverse', 'v3', 'adaptive'}")
     parser.add_argument('--ft_label_smoothing', default=0, type=float)
+    
+    parser.add_argument('--ft_scheduler_start', default=None, type=int, help="Write start epoch of augmentation. If you want no augmentation, make sure you set ft_scheduler_start == ft_scheduler_end")
+    parser.add_argument('--ft_scheduler_end', default=None, type=int, help="Write end epoch of augmentation")
+    parser.add_argument('--ft_EWC', action='store_true', help='To prevent catastrophic forgetting')
+    
     parser.add_argument('--save_succ_fail', default = False, type=bool)
     parser.add_argument('--check_perf', default = False, type=bool)
 
@@ -238,3 +244,7 @@ def get_best_file(checkpoint_dir):
         return best_file
     else:
         return get_resume_file(checkpoint_dir)
+
+
+# scheduler 사용과 ft_with_clean 동시에 불가!!! 
+# 아무것도 Aug안하면서 clean_Test, ft_with_clean 동시에 불가!!

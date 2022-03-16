@@ -26,6 +26,12 @@ def parse_transform(transform: str, image_size=224, **transform_kwargs):
              int(image_size)])
     elif transform == 'RandomRotation':
         return transforms.RandomRotation(degrees=10)
+    
+    # New!!
+    elif transform == 'RandomAffine':
+        return transforms.RandomRotation(degrees=10)
+
+
     else:
         method = getattr(transforms, transform)
         return method(**transform_kwargs)
@@ -40,6 +46,20 @@ def get_composed_transform(augmentation: str = None, image_size=224) -> transfor
                           'RandomHorizontalFlip', 'ToTensor', 'Normalize']
     elif augmentation is None or augmentation.lower() == 'none':
         transform_list = ['Resize', 'ToTensor', 'Normalize']
+
+
+    # analyze individually
+    elif augmentation == 'randomresizedcrop':
+        transform_list = ['RandomResizedCrop', 'ToTensor', 'Normalize']
+    elif augmentation == 'randomcoloredjitter':
+        transform_list = ['RandomColorJitter', 'ToTensor', 'Normalize']
+    elif augmentation == 'randomhorizontalflip':
+        transform_list = ['RandomHorizontalFlip', 'ToTensor', 'Normalize']
+    elif augmentation == 'randomgrayscale':
+        transform_list = ['RandomGrayscale', 'ToTensor', 'Normalize']
+    elif augmentation == 'randomgaussianblur':
+        transform_list = ['RandomGaussianBlur', 'ToTensor', 'Normalize']
+
     else:
         raise ValueError('Unsupported augmentation: {}'.format(augmentation))
 
@@ -47,7 +67,12 @@ def get_composed_transform(augmentation: str = None, image_size=224) -> transfor
     transform = transforms.Compose(transform_funcs)
     return transform
 
-# get 4 corner points of patches
+
+
+
+
+# CutMix
+# get 4 corner points of patches 
 def rand_bbox(size, lam): # size : [B, C, W, H]
     W = size[2] # 224
     H = size[3] # 224

@@ -124,6 +124,7 @@ def get_pretrain_params_path(output_directory):
 
 def get_ft_output_directory(params, makedirs=True, experiment=False):
     path = get_output_directory(params, makedirs=makedirs)
+    # experiment 
     if params.ft_batch_size != 4:
         path = get_output_directory(params, makedirs=makedirs).replace("output", "output_{:03d}".format(params.ft_batch_size))
         path = path.replace("baseline", "batch_size")
@@ -146,6 +147,18 @@ def get_ft_output_directory(params, makedirs=True, experiment=False):
 
     if experiment == True:
         path = path.replace("baseline/output", "experiment/perplexity")
+    
+    if params.ft_augmentation :
+        path = os.path.join(path, 'augmentation')
+    elif params.ft_cutmix:
+        path = os.path.join(path, 'cutmix')
+    elif params.ft_mixup:
+        path = os.path.join(path, 'mixup')
+    elif params.ft_manifold:
+        path = os.path.join(path, 'manifold')
+    elif params.ft_label_smoothing!=0:
+        path = os.path.join(path, 'label_smoothing')
+
 
     if makedirs:
         os.makedirs(path, exist_ok=True)
