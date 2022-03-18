@@ -25,67 +25,66 @@
 # done
 
 
-# # aug base with original
-# for TARGET in  "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
-#   python ./finetune_new2.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --ft_augmentation base --ft_with_clean
+# aug 
+for TARGET in  "miniImageNet_test" "EuroSAT" "ISIC" "ChestX"; do
+  python ./finetune_new.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --ft_augmentation randomcoloredjitter --ft_clean_test
+done
+
+for TARGET in "miniImageNet_test" "EuroSAT" "ISIC" "ChestX"; do
+  python ./finetune_new.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --n_shot 1 --ft_augmentation randomcoloredjitter --ft_clean_test
+done
+
+
+for TARGET in  "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
+  python ./finetune_new.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --ft_augmentation randomgrayscale --ft_clean_test
+done
+
+for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
+  python ./finetune_new.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --n_shot 1 --ft_augmentation randomgrayscale --ft_clean_test
+done
+
+for TARGET in  "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
+  python ./finetune_new.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --ft_augmentation randomgaussianblur --ft_clean_test
+done
+
+for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
+  python ./finetune_new.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --n_shot 1 --ft_augmentation randomgaussianblur --ft_clean_test
+done
+
+
+# middle
+
+# # 20 80
+# # cutmix
+
+# for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
+#   python ./finetune.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --n_shot 1 --ft_cutmix --ft_scheduler_end 70 --ft_scheduler_start 30 --ft_clean_test
+# done
+
+
+# for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
+#   python ./finetune.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --ft_cutmix --ft_scheduler_end 70 --ft_scheduler_start 30 --ft_clean_test
+# done
+
+
+
+
+# for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
+#   python ./finetune_new2.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --n_shot 1 --ft_mixup --ft_scheduler_end 80 --ft_scheduler_start 20 --ft_clean_test
 # done
 
 # for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
-#   python ./finetune_new2.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --n_shot 1 --ft_augmentation base --ft_with_clean
+#   python ./finetune_new2.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --ft_mixup --ft_scheduler_end 80 --ft_scheduler_start 20 --ft_clean_test
+# done
+
+# for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
+#   python ./finetune_new2.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --n_shot 1 --ft_mixup --ft_scheduler_end 90 --ft_scheduler_start 10 --ft_clean_test
 # done
 
 
-# middle
-for TARGET in "ISIC" "ChestX"; do
-  python ./finetune_new.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --ft_cutmix --ft_scheduler_end 80 --ft_scheduler_start 20 --ft_clean_test
-done
-
-for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
-  python ./finetune_new.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --n_shot 1 --ft_cutmix --ft_scheduler_end 80 --ft_scheduler_start 20 --ft_clean_test
-done
-
-for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
-  python ./finetune_new.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --ft_mixup --ft_scheduler_end 80 --ft_scheduler_start 20 --ft_clean_test
-done
-
-for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
-  python ./finetune_new.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --n_shot 1 --ft_mixup --ft_scheduler_end 80 --ft_scheduler_start 20 --ft_clean_test
-done
-
-for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
-  python ./finetune_new.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --ft_cutmix --ft_scheduler_end 90 --ft_scheduler_start 10 --ft_clean_test
-done
-
-for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
-  python ./finetune_new.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --n_shot 1 --ft_cutmix --ft_scheduler_end 90 --ft_scheduler_start 10 --ft_clean_test
-done
-
-for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
-  python ./finetune_new.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --ft_mixup --ft_scheduler_end 90 --ft_scheduler_start 10 --ft_clean_test
-done
-
-for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
-  python ./finetune_new.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --n_shot 1 --ft_mixup --ft_scheduler_end 90 --ft_scheduler_start 10 --ft_clean_test
-done
+# for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
+#   python ./finetune_new2.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --ft_mixup --ft_scheduler_end 90 --ft_scheduler_start 10 --ft_clean_test
+# done
 
 
-for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
-  python ./finetune_new.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --ft_cutmix --ft_scheduler_end 70 --ft_scheduler_start 30 --ft_clean_test
-done
 
-for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
-  python ./finetune_new.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --n_shot 1 --ft_cutmix --ft_scheduler_end 70 --ft_scheduler_start 30 --ft_clean_test
-done
-
-# middle
-for TARGET in "miniImageNet_test" "CropDisease"  "EuroSAT" "ISIC" "ChestX"; do
-  python ./finetune_new.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --ft_mixup --ft_scheduler_end 70 --ft_scheduler_start 30 --ft_clean_test
-done
-
-for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
-  python ./finetune_new.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --n_shot 1 --ft_mixup --ft_scheduler_end 70 --ft_scheduler_start 30 --ft_clean_test
-done
-
-for TARGET in  "miniImageNet_test"; do
-  python ./finetune_new.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --split_seed 1 --ft_intermediate_test --ft_augmentation base --ft_with_clean
-done

@@ -40,7 +40,7 @@ def parse_transform(transform: str, image_size=224, **transform_kwargs):
 def get_composed_transform(augmentation: str = None, image_size=224) -> transforms.Compose:
     if augmentation == 'base':
         transform_list = ['RandomResizedCrop', 'RandomHorizontalFlip', 'ToTensor',
-                          'Normalize'] # 'RandomColorJitter',
+                          'Normalize', 'RandomColorJitter']
     elif augmentation == 'strong':
         transform_list = ['RandomResizedCrop', 'RandomColorJitter', 'RandomGrayscale', 'RandomGaussianBlur',
                           'RandomHorizontalFlip', 'ToTensor', 'Normalize']
@@ -50,15 +50,15 @@ def get_composed_transform(augmentation: str = None, image_size=224) -> transfor
 
     # analyze individually
     elif augmentation == 'randomresizedcrop':
-        transform_list = ['RandomResizedCrop', 'ToTensor', 'Normalize']
+        transform_list = ['RandomResizedCrop', 'ToTensor', 'Normalize', 'Resize']
     elif augmentation == 'randomcoloredjitter':
-        transform_list = ['RandomColorJitter', 'ToTensor', 'Normalize']
+        transform_list = ['RandomColorJitter', 'ToTensor', 'Normalize', 'Resize']
     elif augmentation == 'randomhorizontalflip':
-        transform_list = ['RandomHorizontalFlip', 'ToTensor', 'Normalize']
+        transform_list = ['RandomHorizontalFlip', 'Resize', 'ToTensor', 'Normalize']
     elif augmentation == 'randomgrayscale':
-        transform_list = ['RandomGrayscale', 'ToTensor', 'Normalize']
+        transform_list = ['RandomGrayscale', 'ToTensor', 'Normalize', 'Resize']
     elif augmentation == 'randomgaussianblur':
-        transform_list = ['RandomGaussianBlur', 'ToTensor', 'Normalize']
+        transform_list = ['RandomGaussianBlur', 'ToTensor', 'Normalize', 'Resize']
 
     else:
         raise ValueError('Unsupported augmentation: {}'.format(augmentation))

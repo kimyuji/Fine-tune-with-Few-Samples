@@ -82,7 +82,7 @@ def parse_args(mode):
     parser.add_argument('--ft_augmentation', default=None, type=str, help="Augmentation used for fine-tuning {None, 'base', 'strong'}")
     parser.add_argument('--ft_manifold', action='store_true', help="select version : {'v1', 'v2', 'v3', 'mixup', 'adaptive'}")
     parser.add_argument('--ft_cutmix', action='store_true', help="select version : {'v1', 'v2', 'v2_reverse', 'v3', 'adaptive'}")
-    parser.add_argument('--ft_mixup', default=None, type=str, help="select version : {'v1', 'v2', 'v2_reverse', 'v3', 'adaptive'}")
+    parser.add_argument('--ft_mixup', action='store_true', help="select version : {'v1', 'v2', 'v2_reverse', 'v3', 'adaptive'}")
     parser.add_argument('--ft_label_smoothing', default=0, type=float)
     
     parser.add_argument('--ft_scheduler_start', default=None, type=int, help="Write start epoch of augmentation. If you want no augmentation, make sure you set ft_scheduler_start == ft_scheduler_end")

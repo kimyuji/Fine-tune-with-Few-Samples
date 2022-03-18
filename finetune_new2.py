@@ -27,9 +27,6 @@ from elastic_weight_consolidation import ElasticWeightConsolidation
 
 def main(params):
     # ft_scheduler configuration 
-    scheduler_none = params.ft_scheduler_start == params.ft_scheduler_end
-    if not scheduler_none and (params.ft_mixup != 'v1' and params.ft_cutmix != 'v1' and params.ft_augmentation is None):
-        raise ValueError("You should set ft_scheduler_start == ft_scheduler_end in order to use other versions")
 
     base_output_dir = get_output_directory(params) 
     output_dir = get_ft_output_directory(params)
@@ -337,10 +334,6 @@ def main(params):
                 elif params.ft_manifold == 'mixup': # mins for the num of epoch//2 to 0
                     paired_input = f_support_aug[indices_shuffled[batch_indices],:]
                     input = lam * input + (1. - lam) * paired_input
-                else:
-                    if params.ft_manifold is not None:
-                        raise ValueError('Invalid version number of manifold augmentation')
-
 
                 if torch_pretrained:
                     input = input.squeeze(2).squeeze(2)
@@ -375,8 +368,7 @@ def main(params):
             # Test Using Clean Support
             if params.ft_clean_test:
                 with torch.no_grad():
-                    f_support_clean = body.forward_features(x_support_clean, params.ft_features)
-                    pred_clean = head(f_support_clean) # (75, 512)
+                    pred_clean = head(f_support) # (75, 512)
                 train_acc_clean = torch.eq(y_support, pred_clean.argmax(dim=1)).sum() / n_data
                 train_acc_clean_history.append(train_acc_clean.item())
 

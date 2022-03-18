@@ -97,10 +97,10 @@ def main(params):
 
     if params.ft_augmentation:
         train_history_path = train_history_path.replace('.csv', '_{}.csv'.format(params.ft_augmentation))
-        test_history_path = test_history_path.replace('.csv', '{}.csv'.format(params.ft_augmentation))
+        test_history_path = test_history_path.replace('.csv', '_{}.csv'.format(params.ft_augmentation))
     if params.ft_manifold:
-        train_history_path = train_history_path.replace('.csv', '{}.csv'.format(params.ft_manifold))
-        test_history_path = test_history_path.replace('.csv', '{}.csv'.format(params.ft_manifold))
+        train_history_path = train_history_path.replace('.csv', '_{}.csv'.format(params.ft_manifold))
+        test_history_path = test_history_path.replace('.csv', '_{}.csv'.format(params.ft_manifold))
     if params.ft_label_smoothing != 0:
         train_history_path = train_history_path.replace('.csv', '_ls.csv')
         test_history_path = test_history_path.replace('.csv', '_ls.csv')
@@ -214,6 +214,7 @@ def main(params):
                 f_query = backbone(x_query)
             else:
                 f_query = body.forward_features(x_query, params.ft_features)
+            # load support set
             if params.ft_augmentation is None:  # load data and extract features once per episode
                     x_support, _ = next(support_iterator)
                     x_support = x_support.cuda()
@@ -229,14 +230,15 @@ def main(params):
         train_loss_history = []
 
         for epoch in range(n_epoch):
+
             # Train
-            body.train()
+            body.eval()
             head.train()
 
-            aug_bool = True
             mix_bool = (params.ft_mixup or params.ft_cutmix or params.ft_manifold == 'mixup') 
+            aug_bool = mix_bool or params.ft_augmentation
             if params.ft_scheduler_end is not None: # if aug is scheduled, 
-                aug_bool = (epoch < params.ft_scheduler_end and epoch >= params.ft_scheduler_start) and (mix_bool or params.ft_augmentation)
+                aug_bool = (epoch < params.ft_scheduler_end and epoch >= params.ft_scheduler_start) and aug_bool
 
             if params.ft_augmentation:
                 x_support_aug, _ = next(support_iterator) # augmented by loader
@@ -263,9 +265,11 @@ def main(params):
                 if mix_bool:
                     x_support_aug = copy.deepcopy(x_support)
                     lam = np.random.beta(1.0, 1.0) # 어차피 Uniform sampling
+                    lam = 0.5 # fix
                     bbx1, bby1, bbx2, bby2 = rand_bbox(x_support.shape, lam)
                     indices_shuffled = torch.randperm(x_support.shape[0])
-                    y_shuffled = y_support[indices_shuffled] # shuffled label
+                    indices_shuffled = torch.tensor([0,1,2,4,3]) # fix
+                    y_shuffled = y_support[indices_shuffled] # fixed to [0,1,2,4,3]
 
                     if params.ft_cutmix: # recalculate ratio of img b by its area
                         x_support_aug[:,:,bbx1:bbx2, bby1:bby2] = x_support[indices_shuffled,:,bbx1:bbx2, bby1:bby2]
@@ -293,29 +297,6 @@ def main(params):
                 if aug_bool and mix_bool:
                     y_shuffled_batch = y_shuffled[batch_indices]
                 
-                # manifold(representation) augmentation
-                if params.ft_manifold == 'v1':  # only 2 mins to 0
-                    feat_mask = torch.ones_like(f_batch)
-                    mins = torch.topk(torch.abs(f_batch), k=2, dim=1, largest=False).indices
-                    for i in range(len(mins)):
-                        feat_mask[i][mins[i]] = 0
-                    f_batch = f_batch * feat_mask
-                elif params.ft_manifold == 'v2': # mins for the num of epoch to 0 
-                    feat_mask = torch.ones_like(f_batch)
-                    mins = torch.topk(torch.abs(f_batch), k=epoch, dim=1, largest=False).indices
-                    for i in range(len(mins)):
-                        feat_mask[i][mins[i]] = 0
-                    f_batch = f_batch * feat_mask
-                elif params.ft_manifold == 'v3': # mins for the num of epoch//2 to 0
-                    feat_mask = torch.ones_like(f_batch)
-                    mins = torch.topk(torch.abs(f_batch), k=epoch//2, dim=1, largest=False).indices
-                    for i in range(len(mins)):
-                        feat_mask[i][mins[i]] = 0
-                    f_batch = f_batch * feat_mask
-                elif params.ft_manifold == 'mixup': # mins for the num of epoch//2 to 0
-                    paired_input = f_support[indices_shuffled[batch_indices],:]
-                    f_batch = lam * f_batch + (1. - lam) * paired_input
-
                 # head 거치기
                 pred = head(f_batch)
 

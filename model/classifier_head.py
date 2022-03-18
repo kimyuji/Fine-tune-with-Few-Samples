@@ -25,26 +25,26 @@ class TwoLayerMLPClassifier(nn.Module):
         x = self.fc2(x)
         return x
 
-class AdaptiveLinearClassifier(nn.Module):
-    def __init__(self, params):
-        super(AdaptiveLinearClassifier).__init__()
-        self.model = LinearClassifier(512, 5, params)
-        self.adaptive_mask = nn.Parameter(torch.tensor(2., requires_grad = True))
+# class AdaptiveLinearClassifier(nn.Module):
+#     def __init__(self, params):
+#         super(AdaptiveLinearClassifier).__init__()
+#         self.model = LinearClassifier(512, 5, params)
+#         self.adaptive_mask = nn.Parameter(torch.tensor(2., requires_grad = True))
 
-    def forward(self, x):
-        feat_mask = torch.ones_like(x)
-        mins = torch.topk(torch.abs(x), k=int(self.adaptive_mask.data), dim=1, largest=False).indices
-        for i in range(len(mins)):
-            feat_mask[i][mins[i]] = 0
-        x = x * feat_mask
-        x = self.model(x)
-        return x
+#     def forward(self, x):
+#         feat_mask = torch.ones_like(x)
+#         mins = torch.topk(torch.abs(x), k=int(self.adaptive_mask.data), dim=1, largest=False).indices
+#         for i in range(len(mins)):
+#             feat_mask[i][mins[i]] = 0
+#         x = x * feat_mask
+#         x = self.model(x)
+#         return x
     
 
 
 
 CLASSIFIER_HEAD_CLASS_MAP = {
-    'adaptivelinear' : AdaptiveLinearClassifier,
+    # 'adaptivelinear' : AdaptiveLinearClassifier,
     'linear': LinearClassifier,
     'two_layer_mlp': TwoLayerMLPClassifier
 }
