@@ -265,11 +265,11 @@ def main(params):
                 if mix_bool:
                     x_support_aug = copy.deepcopy(x_support)
                     lam = np.random.beta(1.0, 1.0) # 어차피 Uniform sampling
-                    lam = 0.5 # fix
+                    #lam = 0.5 # fix
                     bbx1, bby1, bbx2, bby2 = rand_bbox(x_support.shape, lam)
                     indices_shuffled = torch.randperm(x_support.shape[0])
-                    indices_shuffled = torch.tensor([0,1,2,4,3]) # fix
-                    y_shuffled = y_support[indices_shuffled] # fixed to [0,1,2,4,3]
+                    #indices_shuffled = torch.tensor([0,1,2,4,3]) # fix
+                    y_shuffled = y_support[indices_shuffled] 
 
                     if params.ft_cutmix: # recalculate ratio of img b by its area
                         x_support_aug[:,:,bbx1:bbx2, bby1:bby2] = x_support[indices_shuffled,:,bbx1:bbx2, bby1:bby2]
