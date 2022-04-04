@@ -37,7 +37,6 @@ class EpisodeSampler:
 
         # for i in range(self.n_classes):
         #     print("class", i, ":", len(self.indices_by_class[i]))
-        print("End Preparing Sample Index")
 
     def __getitem__(self, index):
         """

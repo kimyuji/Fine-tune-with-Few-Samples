@@ -37,7 +37,7 @@ def parse_transform(transform: str, image_size=224, **transform_kwargs):
         return method(**transform_kwargs)
 
 
-def get_composed_transform(augmentation: str = None, image_size=224) -> transforms.Compose:
+def get_composed_transform(augmentation: str = None, image_size=224) -> transforms.Compose: #return 주석
     if augmentation == 'base':
         transform_list = ['RandomResizedCrop', 'RandomHorizontalFlip', 'ToTensor',
                           'Normalize', 'RandomColorJitter']
@@ -50,7 +50,7 @@ def get_composed_transform(augmentation: str = None, image_size=224) -> transfor
 
     # analyze individually
     elif augmentation == 'randomresizedcrop':
-        transform_list = ['RandomResizedCrop', 'ToTensor', 'Normalize', 'Resize']
+        transform_list = ['RandomResizedCrop', 'ToTensor', 'Normalize']
     elif augmentation == 'randomcoloredjitter':
         transform_list = ['RandomColorJitter', 'ToTensor', 'Normalize', 'Resize']
     elif augmentation == 'randomhorizontalflip':
@@ -59,6 +59,8 @@ def get_composed_transform(augmentation: str = None, image_size=224) -> transfor
         transform_list = ['RandomGrayscale', 'ToTensor', 'Normalize', 'Resize']
     elif augmentation == 'randomgaussianblur':
         transform_list = ['RandomGaussianBlur', 'ToTensor', 'Normalize', 'Resize']
+    elif augmentation == 'flipcrop':
+        transform_list = ['RandomResizedCrop', 'RandomHorizontalFlip', 'ToTensor', 'Normalize', 'Resize']
 
     else:
         raise ValueError('Unsupported augmentation: {}'.format(augmentation))

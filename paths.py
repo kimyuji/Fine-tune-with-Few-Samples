@@ -154,10 +154,15 @@ def get_ft_output_directory(params, makedirs=True, experiment=False):
         path = os.path.join(path, 'cutmix')
     elif params.ft_mixup:
         path = os.path.join(path, 'mixup')
-    elif params.ft_manifold:
-        path = os.path.join(path, 'manifold')
+    elif params.ft_manifold_mixup:
+        path = os.path.join(path, 'manifold_mixup')
+    elif params.ft_manifold_aug:
+        path = os.path.join(path, 'manifold_aug')
     elif params.ft_label_smoothing!=0:
         path = os.path.join(path, 'label_smoothing')
+
+    if params.ft_no_pretrain:
+        path = path.replace("default", "no_pretrain")
 
 
     if makedirs:

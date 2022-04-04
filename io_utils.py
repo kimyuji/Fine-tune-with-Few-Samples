@@ -6,6 +6,7 @@ import backbone
 
 def parse_args(mode):
     parser = argparse.ArgumentParser(description='CD-FSL ({} mode)'.format(mode))
+    parser.add_argument('--gpu_idx' , default='0', type=str,  help='select gpu number from 0 to 3')
     parser.add_argument('--dataset'     , default='miniImageNet',        help='training base model')
     parser.add_argument('--model'       , default='ResNet10',      help='backbone architecture')  # refers to (ssl) method in new modules
     parser.add_argument('--method'      , default='baseline',   help='baseline/protonet/maml')
@@ -75,14 +76,18 @@ def parse_args(mode):
     parser.add_argument('--ft_features', default=None, type=str, help='Specify which features to use from the base model (see model/base.py)')
     parser.add_argument('--ft_intermediate_test', action='store_true', help='Evaluate on query set during fine-tuning')
     parser.add_argument('--ft_episode_seed', default=0, type=int)
+
     # option for training
     parser.add_argument('--ft_clean_test', action='store_true', help ='Test on nonaugmented samples every epoch')
     parser.add_argument('--ft_with_clean', action='store_true', help="train augmented imgs with original imgs")
+    parser.add_argument('--ft_no_pretrain', action='store_true', help="if true, pretrained parts are random initialized")
+
     # augmentation options
     parser.add_argument('--ft_augmentation', default=None, type=str, help="Augmentation used for fine-tuning {None, 'base', 'strong'}")
-    parser.add_argument('--ft_manifold', action='store_true', help="select version : {'v1', 'v2', 'v3', 'mixup', 'adaptive'}")
-    parser.add_argument('--ft_cutmix', action='store_true', help="select version : {'v1', 'v2', 'v2_reverse', 'v3', 'adaptive'}")
-    parser.add_argument('--ft_mixup', action='store_true', help="select version : {'v1', 'v2', 'v2_reverse', 'v3', 'adaptive'}")
+    parser.add_argument('--ft_manifold_aug', default = None, type = str, help="select version : {'v1', 'v2', 'v3', 'adaptive'}")
+    parser.add_argument('--ft_manifold_mixup', action='store_true', help="manifold mixup of extracted features")
+    parser.add_argument('--ft_cutmix', action='store_true', help="cutmix method on support images")
+    parser.add_argument('--ft_mixup', action='store_true', help="mixup method on support images")
     parser.add_argument('--ft_label_smoothing', default=0, type=float)
     
     parser.add_argument('--ft_scheduler_start', default=None, type=int, help="Write start epoch of augmentation. If you want no augmentation, make sure you set ft_scheduler_start == ft_scheduler_end")
