@@ -22,9 +22,6 @@ from utils import *
 # 둘다 makedir true
 
 def main(params):
-    os.environ["CUDA_VISIBLE_DEVICES"] = params.gpu_idx
-    print('\nCurrent cuda device:', torch.cuda.current_device())
-
     base_output_dir = get_output_directory(params) 
     output_dir = get_ft_output_directory(params)
     torch_pretrained = ("torch" in params.backbone)
@@ -90,10 +87,6 @@ def main(params):
     #loss_history_path = os.path.join(output_dir, 'loss_history.csv')
     grad_history_path = os.path.join(output_dir, 'grad_history.csv')
     params_path = get_ft_params_path(output_dir)
-    
-    if params.ft_augmentation:
-        train_history_path = train_history_path.replace('.csv', '_{}.csv'.format(params.ft_augmentation))
-        test_history_path = test_history_path.replace('.csv', '_{}.csv'.format(params.ft_augmentation))
 
     print('Saving finetune params to {}'.format(params_path))
     print('Saving finetune train history to {}'.format(train_history_path))
@@ -152,7 +145,6 @@ def main(params):
         worst4_path = os.path.join(output_dir, "worst4.txt")
         worst5_path = os.path.join(output_dir, "worst5.txt")
 
-########################################################################################################################
     for episode in range(n_episodes):
         # Reset models for each episode
         if not torch_pretrained:
@@ -224,7 +216,7 @@ def main(params):
         train_loss_history = []
         train_grad_history = []
 
-########################################################################################################################
+        n_iter = 0
         for epoch in range(n_epoch):
             # Train
             body.train()
@@ -259,9 +251,10 @@ def main(params):
                 correct += torch.eq(y, p.argmax(dim=1)).sum()
                 loss = loss_fn(p, y)
 
-                optimizer.zero_grad() 
+                optimizer.zero_grad() # pytorch에서는 이걸 안해주면 gradient를 계속 누적함 (각 Iteration이 끝나면 초기화해줌)
                 loss.backward()
                 optimizer.step()
+                n_iter = n_iter+1;
 
                 total_loss += loss.item()
 

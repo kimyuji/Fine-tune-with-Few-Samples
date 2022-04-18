@@ -28,9 +28,6 @@ from elastic_weight_consolidation import ElasticWeightConsolidation
 def main(params):
     # ft_scheduler configuration 
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = params.gpu_idx
-    print('\nCurrent cuda device:', torch.cuda.current_device())
-
     base_output_dir = get_output_directory(params) 
     output_dir = get_ft_output_directory(params)
     torch_pretrained = ("torch" in params.backbone)
@@ -51,12 +48,11 @@ def main(params):
     s = params.n_shot
     q = params.n_query_shot
     # Whether to optimize for fixed features (when there is no augmentation and only head is updated)
-    use_fixed_features = params.ft_augmentation is None and params.ft_parts == 'head'
+    # use_fixed_features = params.ft_augmentation is None and params.ft_parts == 'head'
 
     # Model
-    backbone = get_backbone_class(params.backbone)() 
+    backbone = get_backbone_class(params.backbone)()
     body = get_model_class(params.model)(backbone, params)
-
     if params.ft_features is not None:
         if params.ft_features not in body.supported_feature_selectors:
             raise ValueError(
@@ -64,7 +60,7 @@ def main(params):
 
     # Dataloaders
     # Note that both dataloaders sample identical episodes, via episode_seed
-    support_epochs = 1 if use_fixed_features else n_epoch
+    support_epochs = 1 if params.ft_augmentation is None else n_epoch
     support_loader = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=True,
                                                      n_query_shot=q, n_episodes=n_episodes, n_epochs=support_epochs,
                                                      augmentation=params.ft_augmentation,
@@ -78,7 +74,7 @@ def main(params):
                                                    num_workers=params.num_workers,
                                                    split_seed=params.split_seed,
                                                    episode_seed=params.ft_episode_seed)
-    if params.ft_clean_test and not use_fixed_features:
+    if params.ft_clean_test:
         support_loader_clean = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=True,
                                                      n_query_shot=q, n_episodes=n_episodes, n_epochs=support_epochs,
                                                      augmentation=None,
@@ -86,7 +82,7 @@ def main(params):
                                                      num_workers=params.num_workers,
                                                      split_seed=params.split_seed, episode_seed=params.ft_episode_seed)
         support_iterator_clean = iter(support_loader_clean)
-    #print("dddd")
+
     # 값이 맞게끔 보증! 
     assert (len(query_loader) == n_episodes)
     assert (len(support_loader) == n_episodes * support_epochs)
@@ -102,9 +98,9 @@ def main(params):
     if params.ft_augmentation:
         train_history_path = train_history_path.replace('.csv', '_{}.csv'.format(params.ft_augmentation))
         test_history_path = test_history_path.replace('.csv', '_{}.csv'.format(params.ft_augmentation))
-    if params.ft_manifold_aug:
-        train_history_path = train_history_path.replace('.csv', '_{}.csv'.format(params.ft_manifold_aug))
-        test_history_path = test_history_path.replace('.csv', '_{}.csv'.format(params.ft_manifold_aug))
+    if params.ft_manifold:
+        train_history_path = train_history_path.replace('.csv', '_{}.csv'.format(params.ft_manifold))
+        test_history_path = test_history_path.replace('.csv', '_{}.csv'.format(params.ft_manifold))
     if params.ft_label_smoothing != 0:
         train_history_path = train_history_path.replace('.csv', '_ls.csv')
         test_history_path = test_history_path.replace('.csv', '_ls.csv')
@@ -112,11 +108,6 @@ def main(params):
     if params.ft_scheduler_start != params.ft_scheduler_end:
         train_history_path = train_history_path.replace('.csv', '_{}_{}.csv'.format(params.ft_scheduler_start, params.ft_scheduler_end))
         test_history_path = test_history_path.replace('.csv', '_{}_{}.csv'.format(params.ft_scheduler_start, params.ft_scheduler_end))
-
-
-    # change directory!!!
-    train_history_path = train_history_path.replace('.csv', '_check.csv')
-    test_history_path = test_history_path.replace('.csv', '_check.csv')
 
     loss_history_path = train_history_path.replace('train_history', 'loss_history')
     train_clean_history_path = test_history_path.replace('test_history', 'clean_history')
@@ -158,18 +149,12 @@ def main(params):
         print()
         state = torch.load(body_state_path)
 
-########################################################################################################################
     for episode in range(n_episodes):
         # Reset models for each episode
-        if params.ft_no_pretrain:
-            backbone = get_backbone_class(params.backbone)() 
-            body = get_model_class(params.model)(backbone, params)
-        else:
-            if not torch_pretrained:
-                body.load_state_dict(copy.deepcopy(state))  # note, override model.load_state_dict to change this behavior.
-
-        head = get_classifier_head_class(params.ft_head)(512, params.n_way, params)  # TODO: apply ft_features
-
+        if not torch_pretrained:
+            body.load_state_dict(copy.deepcopy(state))  # note, override model.load_state_dict to change this behavior.
+        head = get_classifier_head_class(params.ft_head)(512, params.n_way,
+                                                         params)  # TODO: apply ft_features
         body.cuda()
         head.cuda()
 
@@ -206,6 +191,16 @@ def main(params):
         criterion = nn.CrossEntropyLoss(label_smoothing=params.ft_label_smoothing).cuda()
         ewc = ElasticWeightConsolidation(head, criterion, optimizer)
 
+        # no augmentation (Transform X)
+            # x_support, y_support : episode마다 --> 절대 바뀌면 안됨
+            # x_support_aug : epoch마다 --> based on x_support
+            # y_shuffled : y_support와 pair
+        
+        # yes augmentation (augmentation O)
+            # x_support, y_support : epoch마다 --> 절대 바뀌면 안됨
+            # x_support_aug : epoch마다 dataloader통해
+            # y_shuffled: 없음 X
+
         x_support = None
         f_support = None
         y_support = torch.arange(w).repeat_interleave(s).cuda() # 각 요소를 반복 [000001111122222....]
@@ -214,60 +209,68 @@ def main(params):
         f_query = None
         y_query = torch.arange(w).repeat_interleave(q).cuda() 
 
-        if use_fixed_features:  # load data and extract features once per episode
-            with torch.no_grad():
-                x_support, _ = next(support_iterator)
-                x_support = x_support.cuda()
+        with torch.no_grad():
+            if torch_pretrained:
+                f_query = backbone(x_query)
+            else:
+                f_query = body.forward_features(x_query, params.ft_features)
+            # load support set
+            if params.ft_augmentation is None:  # load data and extract features once per episode
+                    x_support, _ = next(support_iterator)
+                    x_support = x_support.cuda()
 
-                if torch_pretrained:
-                    f_support = backbone(x_support)
-                    f_query = backbone(x_query)
-                else:
-                    f_support = body.forward_features(x_support, params.ft_features)
-                    f_query = body.forward_features(x_query, params.ft_features)
-
-                    if params.ft_clean_test: # no aug, head
-                        f_support_clean = copy.deepcopy(f_support)
+                    if torch_pretrained:
+                        f_support_clean = backbone(x_support)
+                    else:
+                        f_support_clean = body.forward_features(x_support, params.ft_features)
 
         train_acc_history = []
         test_acc_history = []
-        train_loss_history = []
         train_acc_clean_history = []
-        train_grad_history = []
+        train_loss_history = []
 
-#############################################################################################################
         for epoch in range(n_epoch):
-            # Train
-            body.train()
-            head.train()
 
+            # Train
+            body.eval()
+            head.train()
+            
             # 4 augmentation methods : mixup, cutmix, manifold, augmentation(transform)
             # mixup, cutmix, manifold mixup need 2 labels <- mix_bool == True
-            mix_bool = (params.ft_mixup or params.ft_cutmix or params.ft_manifold_mixup) 
+            mix_bool = (params.ft_mixup or params.ft_cutmix or params.ft_manifold == 'mixup') 
             aug_bool = mix_bool or params.ft_augmentation
             if params.ft_scheduler_end is not None: # if aug is scheduled, 
                 aug_bool = (epoch < params.ft_scheduler_end and epoch >= params.ft_scheduler_start) and aug_bool
 
-            if not use_fixed_features:  
-                x_support, _ = next(support_iterator)
-                x_support = x_support.cuda() 
-                if params.ft_clean_test:
-                    x_support_clean, _ = next(support_iterator_clean)
-                    x_support_clean = x_support_clean.cuda()
-                    if params.ft_augmentation:
-                        f_support_clean = body.forward_features(x_support_clean, params.ft_features)
-
+            if params.ft_augmentation:
+                x_support_aug, _ = next(support_iterator) # augmented by loader
+                x_support_aug = x_support_aug.cuda() 
+                if params.ft_clean_test or params.ft_scheduler_end:
+                    x_support, _ = next(support_iterator_clean)
+                    x_support = x_support.cuda()
+                    with torch.no_grad():
+                        f_support_clean = body.forward_features(x_support, params.ft_features)
+                    # check if aug and clean imgs are the same 
+                    # with open(aug_path+'_{}.txt'.format(epoch), 'wb') as f :
+                    #     pickle.dump(x_support, f)
+                    # with open(clean_path+'_{}.txt'.format(epoch), 'wb') as f :
+                    #     pickle.dump(x_support_clean, f)
+                    
 
             total_loss = 0
             correct = 0
-            indices = np.random.permutation(w * s) 
+            indices = np.random.permutation(n_data) # for shuffling
 
+
+            # img cutmix & img mixup & manifold mixup
             if aug_bool:
                 if mix_bool:
                     x_support_aug = copy.deepcopy(x_support)
-                    lam = np.random.beta(1.0, 1.0) # 어차피 Uniform sampling 
+                    lam = np.random.beta(1.0, 1.0) # 어차피 Uniform sampling
+                    #lam = 0.5 # fix
                     bbx1, bby1, bbx2, bby2 = rand_bbox(x_support.shape, lam)
                     indices_shuffled = torch.randperm(x_support.shape[0])
+                    #indices_shuffled = torch.tensor([0,1,2,4,3]) # fix
                     y_shuffled = y_support[indices_shuffled] 
 
                     if params.ft_cutmix: # recalculate ratio of img b by its area
@@ -276,28 +279,25 @@ def main(params):
                     elif params.ft_mixup:
                         x_support_aug = lam * x_support[:,:,:] + (1. - lam) * x_support[indices_shuffled,:,:]
 
-################################################################################################################
+                with torch.no_grad():
+                    if torch_pretrained:
+                        f_support = backbone(x_support_aug).squeeze(-1).squeeze(-1)
+                    else:
+                        f_support = body.forward_features(x_support_aug, params.ft_features)
+            else : 
+                f_support = f_support_clean
+
             # iteration 25/bs(5shot) or 5/bs(1shot)
             for i in range(support_batches):
                 start_index = i * bs
-                end_index = min(i * bs + bs, w * s)
+                end_index = min(i * bs + bs, n_data)
                 batch_indices = indices[start_index:end_index]
 
-                y_batch = y_support[batch_indices] # label
+                f_batch = f_support[batch_indices]
+                y_batch = y_support[batch_indices] # label of support set
+
                 if aug_bool and mix_bool:
                     y_shuffled_batch = y_shuffled[batch_indices]
-
-                if use_fixed_features:
-                    f_batch = f_support[batch_indices]
-                else: # if use augmentation or update body
-                    f_batch = body.forward_features(x_support[batch_indices], params.ft_features)
-                    if params.ft_manifold_mixup:
-                        f_batch_shuffled = body.forward_features(x_support[indices_shuffled[batch_indices]], params.ft_features)
-                if torch_pretrained:
-                    f_batch = f_batch.squeeze(2).squeeze(2)
-
-                if params.ft_manifold_mixup:
-                    f_batch = lam * f_batch[:,:] + (1. - lam) * f_batch_shuffled[:,:]
                 
                 # head 거치기
                 pred = head(f_batch)
@@ -312,15 +312,14 @@ def main(params):
                 if params.ft_EWC:
                     loss = loss + ewc._compute_consolidation_loss(1000000)
 
-                optimizer.zero_grad() 
-                loss.backward() 
+                optimizer.zero_grad() # pytorch에서는 이걸 안해주면 gradient를 계속 누적함 (각 Iteration이 끝나면 초기화해줌)
+                loss.backward()
                 optimizer.step()
 
                 total_loss += loss.item()
 
             if params.ft_lr_scheduler:
                 scheduler.step()
-
             train_loss = total_loss / support_batches
             train_acc = correct / n_data
 
@@ -329,25 +328,17 @@ def main(params):
             head.eval()
 
             # Test Using Clean Support
-            if params.ft_clean_test:
+            if params.ft_clean_test :
                 with torch.no_grad():
-                    if params.ft_parts == 'head':
-                        pred_clean = head(f_support_clean)
-                    elif params.ft_parts != 'head':
-                        f_support_clean = body.forward_features(x_support_clean, params.ft_features)
-                        pred_clean = head(f_support_clean)
+                    pred_clean = head(f_support_clean)
                 train_acc_clean = torch.eq(y_support, pred_clean.argmax(dim=1)).sum() / n_data
                 train_acc_clean_history.append(train_acc_clean.item())
 
             # Test Using Query
             if params.ft_intermediate_test or epoch == n_epoch - 1:
                 with torch.no_grad():
-                    if not use_fixed_features:
-                        if not torch_pretrained:
-                            f_query = body.forward_features(x_query, params.ft_features)
-                        else:
-                            f_query = backbone(x_query)
-                            f_query = f_query.squeeze(-1).squeeze(-1)
+                    if torch_pretrained:
+                        f_query = f_query.squeeze(-1).squeeze(-1)
                     p_query = head(f_query) 
                 test_acc = torch.eq(y_query, p_query.argmax(dim=1)).sum() / (w * q)
             else:

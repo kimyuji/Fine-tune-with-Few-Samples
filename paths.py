@@ -125,9 +125,9 @@ def get_pretrain_params_path(output_directory):
 def get_ft_output_directory(params, makedirs=True, experiment=False):
     path = get_output_directory(params, makedirs=makedirs)
     # experiment 
-    if params.ft_batch_size != 4:
-        path = get_output_directory(params, makedirs=makedirs).replace("output", "output_{:03d}".format(params.ft_batch_size))
-        path = path.replace("baseline", "batch_size")
+    # if params.ft_batch_size != 4:
+    #     path = get_output_directory(params, makedirs=makedirs).replace("output", "output_{:03d}".format(params.ft_batch_size))
+    #     path = path.replace("baseline", "batch_size")
     # if params.ft_parts != 'head':
     #     path = get_output_directory(params, makedirs=makedirs).replace("baseline", "part_{}".format(params.ft_parts))
     if params.ft_optimizer != 'SGD':
