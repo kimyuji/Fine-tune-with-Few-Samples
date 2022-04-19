@@ -262,7 +262,7 @@ def main(params):
                 x_support_aug = copy.deepcopy(x_support)
                 
                 if mix_bool:
-                    lam = np.random.beta(1.0, 1.0) # 어차피 Uniform sampling 
+                    lam = np.random.beta(1.0, 1.0) 
                     bbx1, bby1, bbx2, bby2 = rand_bbox(x_support.shape, lam)
                     indices_shuffled = torch.randperm(x_support.shape[0])
                     y_shuffled = y_support[indices_shuffled] 
@@ -315,8 +315,8 @@ def main(params):
                 else:
                     loss = criterion(pred, y_batch)
                 
-                if params.ft_EWC:
-                    loss = loss + ewc._compute_consolidation_loss(1000000)
+                # if params.ft_EWC:
+                #     loss = loss + ewc._compute_consolidation_loss(1000000)
 
                 optimizer.zero_grad() 
                 loss.backward() 

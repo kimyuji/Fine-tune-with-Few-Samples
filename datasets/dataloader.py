@@ -42,9 +42,9 @@ def get_default_dataset(dataset_name: str, augmentation: str, image_size: int = 
         image_size = DEFAULT_IMAGE_SIZE
 
     try:
-        dataset_cls = dataset_class_map[dataset_name]
-    except KeyError as e:
-        raise ValueError('Unsupported dataset: {}'.format(dataset_name))
+        dataset_cls = dataset_class_map[dataset_name] # 이게 적용이 안됨 왜지?!
+    except KeyError as e: 
+        raise ValueError('Unsupported dataset: {}'.format(dataset_name)) 
 
     transform = get_composed_transform(augmentation, image_size=image_size)
     if siamese:

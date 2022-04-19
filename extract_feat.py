@@ -10,7 +10,7 @@ import torch.optim
 import torchvision
 from tqdm import tqdm
 import pickle
-
+from datasets.transforms import rand_bbox
 from backbone import get_backbone_class
 from datasets.dataloader import get_dataloader, get_unlabeled_dataloader
 from datasets.dataloader import get_labeled_episodic_dataloader
@@ -18,36 +18,65 @@ from io_utils import parse_args
 from model import get_model_class
 from paths import get_output_directory, get_ft_output_directory
 
+
+
 # Use our pretrained backbone
 def main(params):
     os.environ["CUDA_VISIBLE_DEVICES"] = params.gpu_idx
-    n_episodes = 600
+    n_episodes = 1
     bs = params.ft_batch_size
     n_data = params.n_way * params.n_shot
     n_epoch = int( math.ceil(n_data / 4) * params.ft_epochs / math.ceil(n_data / bs) )
 
     w = params.n_way
-    s = params.n_shot
-    q = params.n_query_shot
-    use_fixed_features = params.ft_augmentation is None and params.ft_parts == 'head'
+    s = 20
+    q = 20
 
-    # load support, support_clean, query samples
-    support_epochs = 1 if use_fixed_features else n_epoch
+    # load clean support and query
     support_loader = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=True,
-                                                     n_query_shot=q, n_episodes=n_episodes, n_epochs=support_epochs,
-                                                     augmentation=params.ft_augmentation,
+                                                     n_query_shot=q, n_episodes=n_episodes, n_epochs=1,
+                                                     augmentation=None,
                                                      unlabeled_ratio=params.unlabeled_ratio,
                                                      num_workers=params.num_workers,
                                                      split_seed=params.split_seed, episode_seed=params.ft_episode_seed)
-    
     query_loader = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=False,
                                                    n_query_shot=q, n_episodes=n_episodes, augmentation=None,
                                                    unlabeled_ratio=params.unlabeled_ratio,
                                                    num_workers=params.num_workers,
                                                    split_seed=params.split_seed,
                                                    episode_seed=params.ft_episode_seed)
-    query_iterator = iter(query_loader)
-    support_iterator = iter(support_loader)
+
+    # augmentation
+    support_loader_flip = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=True,
+                                                     n_query_shot=q, n_episodes=n_episodes, n_epochs=n_epoch,
+                                                     augmentation='randomhorizontalflip',
+                                                     unlabeled_ratio=params.unlabeled_ratio,
+                                                     num_workers=params.num_workers,
+                                                     split_seed=params.split_seed, episode_seed=params.ft_episode_seed)
+    support_loader_crop = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=True,
+                                                     n_query_shot=q, n_episodes=n_episodes, n_epochs=n_epoch,
+                                                     augmentation='randomresizedcrop',
+                                                     unlabeled_ratio=params.unlabeled_ratio,
+                                                     num_workers=params.num_workers,
+                                                     split_seed=params.split_seed, episode_seed=params.ft_episode_seed)    
+    # clean
+    x_support, _ = next(iter(support_loader))
+    x_query, _ = next(iter(query_loader))
+    x_support = x_support.cuda()
+    x_query = x_query.cuda()
+    # aug
+    x_support_flip, _ = next(iter(support_loader_flip))
+    x_support_crop, _ = next(iter(support_loader_crop))
+    x_support_flip = x_support_flip.cuda()
+    x_support_crop = x_support_crop.cuda()
+    # mix
+    #lam = np.random.beta(1.0, 1.0)
+    lam = 0.5
+    bbx1, bby1, bbx2, bby2 = rand_bbox(x_support.shape, lam)
+    indices_shuffled = torch.randperm(x_support.shape[0])
+    x_support_cutmix = copy.deepcopy(x_support)
+    x_support_cutmix[:,:,bbx1:bbx2, bby1:bby2] = x_support[indices_shuffled,:,bbx1:bbx2, bby1:bby2]
+    x_support_mixup = lam * x_support[:,:,:] + (1. - lam) * x_support[indices_shuffled,:,:]
 
     # load pretrained backbone file
     backbone = get_backbone_class(params.backbone)() 
@@ -58,46 +87,104 @@ def main(params):
     body.cuda()
     body.eval() # DO NOT UPDATE BODY!!
     
-
     # path configuration
     feature_path = './feature'
     feature_path = os.path.join(feature_path, params.target_dataset)
-    feature_path = os.path.join(feature_path, '{:03d}way_{:03d}shot'.format(w, s))
-    
-
-    mix_bool = (params.ft_mixup or params.ft_cutmix or params.ft_manifold_mixup) 
-    aug_bool = mix_bool or params.ft_augmentation
-    
-    if not aug_bool: 
-        input_type = 'baseline'
-    else:
-        if params.ft_mixup:
-            input_type ='mixup'
-        elif params.ft_cutmix:
-            input_type ='cutmix'
-        elif params.ft_manifold_mixup:
-            input_type ='manifold_mixup'
-        elif params.ft_augmentation:
-            input_type = params.ft_augmentation
-
-    feature_path = os.path.join(feature_path, input_type)
-    os.makedirs(feature_path, exist_ok=True)
-    print(feature_path)
    
     # extract features
-    for episode in tqdm(range(n_episodes)):
-        with torch.no_grad():
-            x_support, _ = next(support_iterator)
-            x_query, _ = next(query_iterator)
-            x_support = x_support.cuda()
-            x_query = x_query.cuda()
+    with torch.no_grad():
+        # clean
+        f_support = body.forward_features(x_support, params.ft_features)
+        f_query = body.forward_features(x_query, params.ft_features)
+        # aug
+        f_flip = body.forward_features(x_support_flip, params.ft_features)
+        f_crop = body.forward_features(x_support_crop, params.ft_features)
+        # mix
+        f_cutmix = body.forward_features(x_support_cutmix, params.ft_features)
+        f_mixup = body.forward_features(x_support_mixup, params.ft_features)
+        # manifold mixup
+        f_manifold_mixup = lam * f_support[:,:] + (1. - lam) * f_support[indices_shuffled][:,:]
 
-            f_support = body.forward_features(x_support, params.ft_features)
-            f_query = body.forward_features(x_query, params.ft_features)
+    # clean support, query
+    feature_path_final = os.path.join(feature_path, 'baseline')
+    os.makedirs(feature_path_final, exist_ok=True)
+    np.save(feature_path_final+'/support.npy', f_support.cpu().numpy())
+    np.save(feature_path_final+'/query.npy', f_query.cpu().numpy())
 
-        np.save(feature_path+'/support_{:03d}.npy'.format(episode), f_support.cpu().numpy())
-        np.save(feature_path+'/query_{:03d}.npy'.format(episode), f_query.cpu().numpy())
+    # mix
+    feature_path_final = os.path.join(feature_path, 'cutmix')
+    os.makedirs(feature_path_final, exist_ok=True)
+    np.save(feature_path_final+'/support.npy', f_cutmix.cpu().numpy())
+
+    feature_path_final = os.path.join(feature_path, 'mixup')
+    os.makedirs(feature_path_final, exist_ok=True)
+    np.save(feature_path_final+'/support.npy', f_mixup.cpu().numpy())
+
+    feature_path_final = os.path.join(feature_path, 'manifold_mixup')
+    os.makedirs(feature_path_final, exist_ok=True)
+    np.save(feature_path_final+'/support.npy', f_manifold_mixup.cpu().numpy())
+
+    # aug
+    feature_path_final = os.path.join(feature_path, 'flip')
+    os.makedirs(feature_path_final, exist_ok=True)
+    np.save(feature_path_final+'/support.npy', f_flip.cpu().numpy())
+
+    feature_path_final = os.path.join(feature_path, 'crop')
+    os.makedirs(feature_path_final, exist_ok=True)
+    np.save(feature_path_final+'/support.npy', f_crop.cpu().numpy())
+
     print("Saving Finished")
+
+
+
+def extract_source(params):
+    backbone = get_backbone_class(params.backbone)() 
+    body = get_model_class(params.model)(backbone, params)
+    body_state_path = './logs/baseline/output/resnet10_simclr_LS_default/pretrain_state_1000.pt'
+    state = torch.load(body_state_path)
+    body.load_state_dict(copy.deepcopy(state))
+    body.cuda()
+    body.eval()
+
+    labeled_source_bs = 1
+    labeled_source_loader = get_dataloader(dataset_name='miniImageNet', augmentation='strong',
+                        batch_size=labeled_source_bs, num_workers=2)
+    df_source = pd.DataFrame(None, index=list(range(0, 64*20)), columns=list(range(512)))
+    label_list = list(range(64))
+    a = 0; b = 0; c = 0; d = 0; e = 0
+    with torch.no_grad():
+        for img, label in labeled_source_loader:
+            img = img.cuda()
+            if a > 19 and b > 19 and c > 19 and d > 19 and e > 19 : break
+            if int(label[0]) == 47:
+                if a>19 : continue
+                feat = body.forward_features(img, params.ft_features)
+                df_source.loc[a] = feat.cpu().numpy()
+                a = a+1
+            elif int(label[0]) == 35:
+                if b>19 : continue
+                feat = body.forward_features(img, params.ft_features)
+                df_source.loc[20+b] = feat.cpu().numpy()
+                b = b+1
+            elif int(label[0]) == 12:
+                if c>19 : continue
+                feat = body.forward_features(img, params.ft_features)
+                df_source.loc[40+c] = feat.cpu().numpy()
+                c = c+1
+            elif int(label[0]) == 1:
+                if d>19 : continue
+                feat = body.forward_features(img, params.ft_features)
+                df_source.loc[60+d] = feat.cpu().numpy()
+                d = d+1
+            elif int(label[0]) == 3:
+                if e>19 : continue
+                feat = body.forward_features(img, params.ft_features)
+                df_source.loc[80+e] = feat.cpu().numpy()
+                e = e+1
+        source_path = './feature/miniImageNet/baseline/'
+        os.makedirs(source_path, exist_ok=True)
+        df_source.to_csv(source_path+'source_all_df.csv')
+
 
 
 # Use pretrained backbone from Pytorch, load best & worst support/query sets
@@ -164,23 +251,23 @@ def main(params):
 
 if __name__ == '__main__':
     np.random.seed(10)
-    params = parse_args('pretrain')
+    params = parse_args('train')
     # ['miniImageNet", "miniImageNet_test", "CropDisease", "EuroSAT", "ISIC", "ChestX"]
     # datas = ["miniImageNet"]
-    datas = ["mini_test", "crop", "euro", "isic", "chest"]
-    for data in datas:
-        params.source_dataset = data
-        params.backbone = 'resnet10'
-        params.model = 'simclr'
+    # datas = ["mini_test", "crop", "euro", "isic", "chest"]
+    # for data in datas:
+    #     params.source_dataset = data
+    #     params.backbone = 'resnet10'
+    #     params.model = 'simclr'
 
-        targets = params.target_dataset
-        if targets is None:
-            targets = [targets]
-        elif len(targets) > 1:
-            print('#' * 80)
-            print("Running pretrain iteratively for multiple target datasets: {}".format(targets))
-            print('#' * 80)
+    targets = params.target_dataset
+    if targets is None:
+        targets = [targets]
+    elif len(targets) > 1:
+        print('#' * 80)
+        print("Running pretrain iteratively for multiple target datasets: {}".format(targets))
+        print('#' * 80)
 
-        for target in targets:
-            params.target_dataset = target
-            main(params)
+    for target in targets:
+        params.target_dataset = target
+        extract_source(params)
