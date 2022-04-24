@@ -138,7 +138,8 @@ def get_ft_output_directory(params, makedirs=True, experiment=False):
         path = path.replace("baseline", "learning_rate")
     if params.ft_lr_scheduler:
         path = get_output_directory(params, makedirs=makedirs).replace("output", "output_{}".format(params.ft_lr_scheduler))
-        path = path.replace("baseline", "lr_scheduler")        
+        path = path.replace("baseline", "lr_scheduler")   
+         
 
     if not params.ut:
         path = os.path.join(path, DATASET_KEYS[params.target_dataset])
@@ -150,10 +151,11 @@ def get_ft_output_directory(params, makedirs=True, experiment=False):
     
     if params.ft_augmentation :
         path = os.path.join(path, 'augmentation')
+        path = os.path.join(path, params.ft_augmentation)
     elif params.ft_cutmix:
-        path = os.path.join(path, 'cutmix')
+        path = os.path.join(path, params.ft_cutmix)
     elif params.ft_mixup:
-        path = os.path.join(path, 'mixup')
+        path = os.path.join(path, params.ft_mixup)
     elif params.ft_manifold_mixup:
         path = os.path.join(path, 'manifold_mixup')
     elif params.ft_manifold_aug:

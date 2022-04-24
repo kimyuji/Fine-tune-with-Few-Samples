@@ -17,7 +17,7 @@ from datasets.dataloader import get_labeled_episodic_dataloader
 from io_utils import parse_args
 from model import get_model_class
 from paths import get_output_directory, get_ft_output_directory
-
+from torchvision import transforms
 
 
 # Use our pretrained backbone
@@ -93,36 +93,36 @@ def main(params):
    
     # extract features
     with torch.no_grad():
-        # clean
-        f_support = body.forward_features(x_support, params.ft_features)
-        f_query = body.forward_features(x_query, params.ft_features)
+        # # clean
+        # f_support = body.forward_features(x_support, params.ft_features)
+        # f_query = body.forward_features(x_query, params.ft_features)
         # aug
-        f_flip = body.forward_features(x_support_flip, params.ft_features)
+        f_flip = body.forward_features(transforms.functional.hflip(x_support), params.ft_features)
         f_crop = body.forward_features(x_support_crop, params.ft_features)
-        # mix
-        f_cutmix = body.forward_features(x_support_cutmix, params.ft_features)
-        f_mixup = body.forward_features(x_support_mixup, params.ft_features)
-        # manifold mixup
-        f_manifold_mixup = lam * f_support[:,:] + (1. - lam) * f_support[indices_shuffled][:,:]
+        # # mix
+        # f_cutmix = body.forward_features(x_support_cutmix, params.ft_features)
+        # f_mixup = body.forward_features(x_support_mixup, params.ft_features)
+        # # manifold mixup
+        # f_manifold_mixup = lam * f_support[:,:] + (1. - lam) * f_support[indices_shuffled][:,:]
 
-    # clean support, query
-    feature_path_final = os.path.join(feature_path, 'baseline')
-    os.makedirs(feature_path_final, exist_ok=True)
-    np.save(feature_path_final+'/support.npy', f_support.cpu().numpy())
-    np.save(feature_path_final+'/query.npy', f_query.cpu().numpy())
+    # # clean support, query
+    # feature_path_final = os.path.join(feature_path, 'baseline')
+    # os.makedirs(feature_path_final, exist_ok=True)
+    # np.save(feature_path_final+'/support.npy', f_support.cpu().numpy())
+    # np.save(feature_path_final+'/query.npy', f_query.cpu().numpy())
 
-    # mix
-    feature_path_final = os.path.join(feature_path, 'cutmix')
-    os.makedirs(feature_path_final, exist_ok=True)
-    np.save(feature_path_final+'/support.npy', f_cutmix.cpu().numpy())
+    # # mix
+    # feature_path_final = os.path.join(feature_path, 'cutmix')
+    # os.makedirs(feature_path_final, exist_ok=True)
+    # np.save(feature_path_final+'/support.npy', f_cutmix.cpu().numpy())
 
-    feature_path_final = os.path.join(feature_path, 'mixup')
-    os.makedirs(feature_path_final, exist_ok=True)
-    np.save(feature_path_final+'/support.npy', f_mixup.cpu().numpy())
+    # feature_path_final = os.path.join(feature_path, 'mixup')
+    # os.makedirs(feature_path_final, exist_ok=True)
+    # np.save(feature_path_final+'/support.npy', f_mixup.cpu().numpy())
 
-    feature_path_final = os.path.join(feature_path, 'manifold_mixup')
-    os.makedirs(feature_path_final, exist_ok=True)
-    np.save(feature_path_final+'/support.npy', f_manifold_mixup.cpu().numpy())
+    # feature_path_final = os.path.join(feature_path, 'manifold_mixup')
+    # os.makedirs(feature_path_final, exist_ok=True)
+    # np.save(feature_path_final+'/support.npy', f_manifold_mixup.cpu().numpy())
 
     # aug
     feature_path_final = os.path.join(feature_path, 'flip')
@@ -138,6 +138,7 @@ def main(params):
 
 
 def extract_source(params):
+    os.environ["CUDA_VISIBLE_DEVICES"] = params.gpu_idx
     backbone = get_backbone_class(params.backbone)() 
     body = get_model_class(params.model)(backbone, params)
     body_state_path = './logs/baseline/output/resnet10_simclr_LS_default/pretrain_state_1000.pt'
@@ -149,38 +150,18 @@ def extract_source(params):
     labeled_source_bs = 1
     labeled_source_loader = get_dataloader(dataset_name='miniImageNet', augmentation='strong',
                         batch_size=labeled_source_bs, num_workers=2)
-    df_source = pd.DataFrame(None, index=list(range(0, 64*20)), columns=list(range(512)))
-    label_list = list(range(64))
-    a = 0; b = 0; c = 0; d = 0; e = 0
+    df_source = pd.DataFrame(None, index = list(range(64*20)), columns=list(range(512)))
+    sample_count = [0]*64
     with torch.no_grad():
         for img, label in labeled_source_loader:
+            clss = int(label[0])
             img = img.cuda()
-            if a > 19 and b > 19 and c > 19 and d > 19 and e > 19 : break
-            if int(label[0]) == 47:
-                if a>19 : continue
-                feat = body.forward_features(img, params.ft_features)
-                df_source.loc[a] = feat.cpu().numpy()
-                a = a+1
-            elif int(label[0]) == 35:
-                if b>19 : continue
-                feat = body.forward_features(img, params.ft_features)
-                df_source.loc[20+b] = feat.cpu().numpy()
-                b = b+1
-            elif int(label[0]) == 12:
-                if c>19 : continue
-                feat = body.forward_features(img, params.ft_features)
-                df_source.loc[40+c] = feat.cpu().numpy()
-                c = c+1
-            elif int(label[0]) == 1:
-                if d>19 : continue
-                feat = body.forward_features(img, params.ft_features)
-                df_source.loc[60+d] = feat.cpu().numpy()
-                d = d+1
-            elif int(label[0]) == 3:
-                if e>19 : continue
-                feat = body.forward_features(img, params.ft_features)
-                df_source.loc[80+e] = feat.cpu().numpy()
-                e = e+1
+            if sample_count[clss] >= 20 : continue
+            feat = body.forward_features(img, params.ft_features)
+            index = sample_count[clss] + 20 * clss
+            df_source.loc[index] = feat.cpu().numpy()
+            sample_count[clss] = int(sample_count[clss]) + 1
+            if sum(sample_count) > 64*20+1: break
         source_path = './feature/miniImageNet/baseline/'
         os.makedirs(source_path, exist_ok=True)
         df_source.to_csv(source_path+'source_all_df.csv')
@@ -270,4 +251,4 @@ if __name__ == '__main__':
 
     for target in targets:
         params.target_dataset = target
-        extract_source(params)
+        main(params)

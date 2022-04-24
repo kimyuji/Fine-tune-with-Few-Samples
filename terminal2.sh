@@ -14,8 +14,12 @@
 #   python ./finetune_raw_old.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --ft_parts full --split_seed 1 --ft_intermediate_test --n_shot 20 --ft_augmentation randomhorizontalflip --ft_batch_size 16 --gpu_idx 1
 # done
 
-for TARGET in "ISIC" "ChestX"; do
-  python ./finetune_raw_old.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --ft_parts full --split_seed 1 --ft_intermediate_test --n_shot 20 --ft_augmentation randomhorizontalflip --ft_batch_size 16 
+for TARGET in "ChestX"; do
+  python ./finetune_raw_old.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --ft_parts full --split_seed 1 --ft_intermediate_test --n_shot 20 --ft_augmentation randomhorizontalflip --ft_batch_size 16 --gpu_idx 1
+done 
+
+for TARGET in "ISIC"; do
+  python ./finetune_full.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --ft_parts full --split_seed 1 --ft_intermediate_test --n_shot 20 --ft_cutmix --ft_batch_size 16 --gpu_idx 1
 done 
 
 # for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT"; do

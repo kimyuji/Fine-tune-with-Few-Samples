@@ -17,7 +17,7 @@ from model.classifier_head import get_classifier_head_class
 from paths import get_output_directory, get_ft_output_directory, get_ft_train_history_path, get_ft_test_history_path, \
     get_final_pretrain_state_path, get_pretrain_state_path, get_ft_params_path
 from utils import *
-from elastic_weight_consolidation import ElasticWeightConsolidation
+#from elastic_weight_consolidation import ElasticWeightConsolidation
 
 # output_dir : ./logs/output_bs3/mini/resnet10_simclr_LS_default/mini_test/05way_005shot_head_default
 # base_output_dir : #./logs/output_baseline/mini/resnet10_simclr_LS_default/mini_test/05way_005shot_head_default

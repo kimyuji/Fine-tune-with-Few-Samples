@@ -3,10 +3,11 @@ import json
 import math
 import os
 import pickle
+from this import d
 import pandas as pd
 import torch.nn as nn
 import torchsummary as summary
-
+import itertools
 from backbone import get_backbone_class
 import backbone
 from datasets.dataloader import get_labeled_episodic_dataloader
@@ -19,18 +20,17 @@ from paths import get_output_directory, get_ft_output_directory, get_ft_train_hi
 from utils import *
 #from elastic_weight_consolidation import ElasticWeightConsolidation
 
+from sklearn.cluster import KMeans 
+from sklearn.metrics.cluster import v_measure_score
+
 # output_dir : ./logs/output_bs3/mini/resnet10_simclr_LS_default/mini_test/05way_005shot_head_default
 # base_output_dir : #./logs/output_baseline/mini/resnet10_simclr_LS_default/mini_test/05way_005shot_head_default
 # 둘다 makedir true
-
-#os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 def main(params):
     # ft_scheduler configuration 
 
     os.environ["CUDA_VISIBLE_DEVICES"] = params.gpu_idx
-
-
     base_output_dir = get_output_directory(params) 
     output_dir = get_ft_output_directory(params)
     torch_pretrained = ("torch" in params.backbone)
@@ -56,6 +56,7 @@ def main(params):
     # Model
     backbone = get_backbone_class(params.backbone)() 
     body = get_model_class(params.model)(backbone, params)
+    pretrained = get_model_class(params.model)(backbone, params)
 
     if params.ft_features is not None:
         if params.ft_features not in body.supported_feature_selectors:
@@ -98,10 +99,7 @@ def main(params):
     # Output (history, params)
     train_history_path = get_ft_train_history_path(output_dir)
     test_history_path = get_ft_test_history_path(output_dir)
-
-    if params.ft_augmentation:
-        train_history_path = train_history_path.replace('.csv', '_{}.csv'.format(params.ft_augmentation))
-        test_history_path = test_history_path.replace('.csv', '_{}.csv'.format(params.ft_augmentation))
+    
     if params.ft_manifold_aug:
         train_history_path = train_history_path.replace('.csv', '_{}.csv'.format(params.ft_manifold_aug))
         test_history_path = test_history_path.replace('.csv', '_{}.csv'.format(params.ft_manifold_aug))
@@ -115,6 +113,9 @@ def main(params):
 
     loss_history_path = train_history_path.replace('train_history', 'loss_history')
     train_clean_history_path = test_history_path.replace('test_history', 'clean_history')
+    support_v_score_history_path = train_history_path.replace('train_history', 'v_score_support')
+    query_v_score_history_path = train_history_path.replace('train_history', 'v_score_query')
+
     params_path = get_ft_params_path(output_dir)
 
     print('Saving finetune params to {}'.format(params_path))
@@ -136,6 +137,10 @@ def main(params):
                            columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
     # df_grad = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
     #                        columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
+    df_v_score_support = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
+                           columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
+    df_v_score_query = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
+                           columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
 
     # Pre-train state
     
@@ -153,6 +158,15 @@ def main(params):
         print()
         state = torch.load(body_state_path)
 
+
+    all_cases = list(itertools.permutations(list(range(w))))
+    class_shuffled = all_cases
+    for case in copy.deepcopy(all_cases):
+        for idx in range(w):
+            if case[idx] == idx : 
+                class_shuffled.remove(case)
+                break 
+    pretrained.load_state_dict(copy.deepcopy(state))
 ########################################################################################################################
     for episode in range(n_episodes):
         # Reset models for each episode
@@ -230,6 +244,8 @@ def main(params):
         train_loss_history = []
         train_acc_clean_history = []
         train_grad_history = []
+        support_v_score = []
+        query_v_score = []
 
 #############################################################################################################
         for epoch in range(n_epoch):
@@ -262,17 +278,42 @@ def main(params):
                 x_support_aug = copy.deepcopy(x_support)
                 
                 if mix_bool:
-                    lam = np.random.beta(1.0, 1.0) 
-                    bbx1, bby1, bbx2, bby2 = rand_bbox(x_support.shape, lam)
-                    indices_shuffled = torch.randperm(x_support.shape[0])
-                    y_shuffled = y_support[indices_shuffled] 
 
-                    if params.ft_cutmix: # recalculate ratio of img b by its area
-                        x_support_aug[:,:,bbx1:bbx2, bby1:bby2] = x_support[indices_shuffled,:,bbx1:bbx2, bby1:bby2]
-                        lam = 1 - ((bbx2 - bbx1) * (bby2 - bby1) / (x_support.shape[-1] * x_support.shape[-2])) # adjust lambda
-                    elif params.ft_mixup:
+                    if params.ft_mixup:
+                        mode = params.ft_mixup
+                    elif params.ft_cutmix:
+                        mode = params.ft_cutmix
+
+                    if mode != 'lam':
+                        lam = np.random.beta(1.0, 1.0) 
+                    else:
+                        lam = np.random.beta(0.01*(epoch+1), 0.01*(epoch+1))
+                    bbx1, bby1, bbx2, bby2 = rand_bbox(x_support.shape, lam)
+
+                    if mode == 'both':
+                        indices_shuffled = torch.randperm(x_support.shape[0])
+                    else:
+                        shuffled = np.array([])
+                        if mode == 'same' :
+                            class_arr = range(w)
+                        elif mode == 'diff': 
+                            class_arr_idx = np.random.choice(range(len(class_shuffled)), 1)[0]
+                            class_arr = class_shuffled[class_arr_idx]
+                        for clss in class_arr:
+                            shuffled = np.append(shuffled, np.random.permutation(range(clss*s, (clss+1)*s))) 
+                        indices_shuffled = torch.from_numpy(shuffled).long()   
+
+                    # mixup
+                    if params.ft_mixup:
                         x_support_aug = lam * x_support[:,:,:] + (1. - lam) * x_support[indices_shuffled,:,:]
                         
+                    # cutmix
+                    elif params.ft_cutmix: # recalculate ratio of img b by its area
+                        x_support_aug[:,:,bbx1:bbx2, bby1:bby2] = x_support[indices_shuffled,:,bbx1:bbx2, bby1:bby2]
+                        lam = 1 - ((bbx2 - bbx1) * (bby2 - bby1) / (x_support.shape[-1] * x_support.shape[-2])) # adjust lambda
+                    
+                    y_shuffled = y_support[indices_shuffled] 
+
                     with torch.no_grad():
                         if torch_pretrained:
                             f_support = backbone(x_support_aug)
@@ -293,7 +334,7 @@ def main(params):
                 if use_fixed_features:
                     f_batch = f_support[batch_indices]
                 else: # if use augmentation or update body
-                    if aug_bool:
+                    if aug_bool:   
                         f_batch = body.forward_features(x_support_aug[batch_indices], params.ft_features)
                     else:
                         f_batch = body.forward_features(x_support[batch_indices], params.ft_features)
@@ -324,9 +365,10 @@ def main(params):
 
                 total_loss += loss.item()
 
-            if params.ft_lr_scheduler:
-                scheduler.step()
+                # if params.ft_lr_scheduler:
+                #     scheduler.step()
 
+################################################################################################################
             train_loss = total_loss / support_batches
             train_acc = correct / n_data
 
@@ -344,6 +386,22 @@ def main(params):
                         pred_clean = head(f_support_clean)
                 train_acc_clean = torch.eq(y_support, pred_clean.argmax(dim=1)).sum() / n_data
                 train_acc_clean_history.append(train_acc_clean.item())
+            
+            # Calculate V measurement score
+            if params.v_score and params.n_shot != 1:
+                with torch.no_grad():
+                    f_support = body.forward_features(x_support, params.ft_features)
+                f_support = f_support.cpu().numpy()
+                cluster_label = y_support.cpu().numpy()
+                kmeans = KMeans(n_clusters = w)
+                cluster_pred = kmeans.fit(f_support).labels_
+                support_v_score.append(v_measure_score(cluster_pred, cluster_label))
+
+            #if params.layer_diff:
+            # 7 layers
+            # for name, param in body.named_parameters():
+            #     print(name)
+            #     print(param.shape)
 
             # Test Using Query
             if params.ft_intermediate_test or epoch == n_epoch - 1:
@@ -356,6 +414,12 @@ def main(params):
                             f_query = f_query.squeeze(-1).squeeze(-1)
                     p_query = head(f_query) 
                 test_acc = torch.eq(y_query, p_query.argmax(dim=1)).sum() / (w * q)
+                if params.v_score:
+                    f_query = f_query.cpu().numpy()
+                    cluster_label = y_query.cpu().numpy()
+                    kmeans = KMeans(n_clusters = w)
+                    cluster_pred = kmeans.fit(f_query).labels_
+                    query_v_score.append(v_measure_score(cluster_pred, cluster_label))
             else:
                 test_acc = torch.tensor(0)
             
@@ -379,6 +443,15 @@ def main(params):
         df_test.to_csv(test_history_path)
         df_loss.loc[episode + 1] = train_loss_history
         df_loss.to_csv(loss_history_path)
+        if params.v_score:
+            if params.n_shot != 1:
+                df_v_score_support.loc[episode + 1] = support_v_score
+                df_v_score_support.to_csv(support_v_score_history_path)
+            df_v_score_query.loc[episode + 1] = query_v_score
+            df_v_score_query.to_csv(query_v_score_history_path)
+
+        if params.save_backbone:
+            torch.save(body.state_dict(), output_dir+'/body_{:03d}.pt'.format(episode+1))
 
         if params.ft_clean_test:
             df_train_clean.loc[episode + 1] = train_acc_clean_history
@@ -390,6 +463,7 @@ def main(params):
 
     fmt = 'Final Results: Acc={:5.2f} Std={:5.2f}'
     print(fmt.format(df_test.mean()[-1] * 100, 1.96 * df_test.std()[-1] / np.sqrt(n_episodes) * 100))
+
 
     print('Saved history to:')
     print(train_history_path)

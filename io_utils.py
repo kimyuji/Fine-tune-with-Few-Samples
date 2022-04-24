@@ -86,13 +86,19 @@ def parse_args(mode):
     parser.add_argument('--ft_augmentation', default=None, type=str, help="Augmentation used for fine-tuning {None, 'base', 'strong'}")
     parser.add_argument('--ft_manifold_aug', default = None, type = str, help="select version : {'v1', 'v2', 'v3', 'adaptive'}")
     parser.add_argument('--ft_manifold_mixup', action='store_true', help="manifold mixup of extracted features")
-    parser.add_argument('--ft_cutmix', action='store_true', help="cutmix method on support images")
-    parser.add_argument('--ft_mixup', action='store_true', help="mixup method on support images")
+    parser.add_argument('--ft_cutmix', default=None, type=str ,help="version : {same, diff, both, lam}")
+    parser.add_argument('--ft_mixup', default=None, type=str ,help="version : {same, diff, both, lam}")
     parser.add_argument('--ft_label_smoothing', default=0, type=float)
     
     parser.add_argument('--ft_scheduler_start', default=None, type=int, help="Write start epoch of augmentation. If you want no augmentation, make sure you set ft_scheduler_start == ft_scheduler_end")
     parser.add_argument('--ft_scheduler_end', default=None, type=int, help="Write end epoch of augmentation")
     parser.add_argument('--ft_EWC', action='store_true', help='To prevent catastrophic forgetting')
+    
+    # experiments 
+    parser.add_argument('--v_score', action='store_true', help='save v measurement cluster store')
+    parser.add_argument('--layer_diff', action='store_true', help='save |pretrain - fine-tuned| each layers')
+    parser.add_argument('--save_norm', action='store_true', help='save gradient norm of each layers')
+    parser.add_argument('--save_backbone', action='store_true', help='save final pretrained backbone')
     
     parser.add_argument('--save_succ_fail', default = False, type=bool)
     parser.add_argument('--check_perf', default = False, type=bool)
@@ -161,6 +167,8 @@ def parse_args(mode):
         raise AssertionError('Invalid parameter combination')
     if params.ft_parts not in ["head", "body", "full"]:
         raise AssertionError('Invalid params.ft_parts: {}'.format(params.ft_parts))
+    if params.ft_parts=='head' and params.v_score:
+        raise AssertionError('finetune parts should be either body or full in ordr to calculate vscore')
 
     # Assign num_classes
     if params.dataset == 'miniImageNet':

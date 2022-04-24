@@ -10,8 +10,6 @@ def parse_transform(transform: str, image_size=224, **transform_kwargs):
         return transforms.RandomApply([transforms.GaussianBlur(kernel_size=(5, 5))], p=0.3)
     elif transform == 'RandomCrop':
         return transforms.RandomCrop(image_size)
-    elif transform == 'RandomResizedCrop':
-        return transforms.RandomResizedCrop(image_size)
     elif transform == 'CenterCrop':
         return transforms.CenterCrop(image_size)
     elif transform == 'Resize_up':
@@ -26,6 +24,12 @@ def parse_transform(transform: str, image_size=224, **transform_kwargs):
              int(image_size)])
     elif transform == 'RandomRotation':
         return transforms.RandomRotation(degrees=10)
+
+    # check out these two! 
+    elif transform =='RandomHorizontalFlip':
+        return transforms.RandomHorizontalFlip(p=1.0)
+    elif transform == 'RandomResizedCrop':
+        return transforms.RandomResizedCrop(image_size)
     
     # New!!
     elif transform == 'RandomAffine':
