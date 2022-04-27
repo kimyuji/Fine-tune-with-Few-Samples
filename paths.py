@@ -153,8 +153,10 @@ def get_ft_output_directory(params, makedirs=True, experiment=False):
         path = os.path.join(path, 'augmentation')
         path = os.path.join(path, params.ft_augmentation)
     elif params.ft_cutmix:
+        path = os.path.join(path, 'cutmix')
         path = os.path.join(path, params.ft_cutmix)
     elif params.ft_mixup:
+        path = os.path.join(path, 'mixup')
         path = os.path.join(path, params.ft_mixup)
     elif params.ft_manifold_mixup:
         path = os.path.join(path, 'manifold_mixup')

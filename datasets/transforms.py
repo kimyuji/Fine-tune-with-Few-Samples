@@ -43,8 +43,8 @@ def parse_transform(transform: str, image_size=224, **transform_kwargs):
 
 def get_composed_transform(augmentation: str = None, image_size=224) -> transforms.Compose: #return 주석
     if augmentation == 'base':
-        transform_list = ['RandomResizedCrop', 'RandomHorizontalFlip', 'ToTensor',
-                          'Normalize', 'RandomColorJitter']
+        transform_list = ['RandomColorJitter', 'RandomResizedCrop', 'RandomHorizontalFlip', 'ToTensor',
+                          'Normalize']
     elif augmentation == 'strong':
         transform_list = ['RandomResizedCrop', 'RandomColorJitter', 'RandomGrayscale', 'RandomGaussianBlur',
                           'RandomHorizontalFlip', 'ToTensor', 'Normalize']

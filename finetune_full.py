@@ -290,7 +290,7 @@ def main(params):
                         lam = np.random.beta(0.01*(epoch+1), 0.01*(epoch+1))
                     bbx1, bby1, bbx2, bby2 = rand_bbox(x_support.shape, lam)
 
-                    if mode == 'both':
+                    if mode == 'both' or mode == 'lam':
                         indices_shuffled = torch.randperm(x_support.shape[0])
                     else:
                         shuffled = np.array([])
@@ -397,11 +397,6 @@ def main(params):
                 cluster_pred = kmeans.fit(f_support).labels_
                 support_v_score.append(v_measure_score(cluster_pred, cluster_label))
 
-            #if params.layer_diff:
-            # 7 layers
-            # for name, param in body.named_parameters():
-            #     print(name)
-            #     print(param.shape)
 
             # Test Using Query
             if params.ft_intermediate_test or epoch == n_epoch - 1:
@@ -431,6 +426,11 @@ def main(params):
             train_acc_history.append(train_acc.item())
             test_acc_history.append(test_acc.item())
             train_loss_history.append(train_loss)
+################################################################################################################
+        if params.layer_diff:
+            layer_diff = []
+            for p, b in zip(pretrained.named_parameters(), body.named_parameters()):
+                layer_diff.append(np.abs((p[1]-b[1]).cpu().detach().numpy()).mean())
 
         # save model every episode
         # torch.save(head.state_dict(), output_dir+'/{}epoch_head.pt'.format(n_epoch))
