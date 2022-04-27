@@ -49,8 +49,9 @@ def main(params):
 
     # Model
     backbone = get_backbone_class(params.backbone)() 
+    backbone_pre = get_backbone_class(params.backbone)() 
     body = get_model_class(params.model)(backbone, params)
-    pretrained = get_model_class(params.model)(backbone, params)
+    pretrained = get_model_class(params.model)(backbone_pre, params)
 
     if params.ft_features is not None:
         if params.ft_features not in body.supported_feature_selectors:
@@ -73,7 +74,7 @@ def main(params):
     
     # 저장할 dataframe
     df_layer = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
-                            columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
+                            columns=['layer{}'.format(e + 1) for e in range(42)])
 
     # Pre-train state
     pretrain_state_path = './logs/baseline/output/resnet10_simclr_LS_default/pretrain_state_1000.pt'
@@ -95,9 +96,11 @@ def main(params):
             layer_diff.append(np.abs((p[1]-b[1]).detach().numpy()).mean())
             #print(p_param.shape, b_param.shape)
 
-        opt_params = []
-        if params.ft_train_body:
-            opt_params.append({'params': body.parameters()})
+        # opt_params = []
+        # if params.ft_train_body:
+        #     opt_params.append({'params': body.parameters()})
+
+        df_layer.loc[episode+1] = layer_diff
 
     print('Saved history to:')
     print(layer_path)

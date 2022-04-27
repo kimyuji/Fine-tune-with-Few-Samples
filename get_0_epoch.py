@@ -252,8 +252,8 @@ def main(params):
         print(score)
         df_v_score_query.loc[episode + 1] = score
     
-
-    df_v_score_query.to_csv(query_v_score_history_path + '_0')
+    #print(query_v_score_history_path)
+    df_v_score_query.to_csv(query_v_score_history_path.replace('.csv', '_0.csv'))
     
     
 

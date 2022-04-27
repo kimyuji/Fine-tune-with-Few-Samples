@@ -55,8 +55,9 @@ def main(params):
 
     # Model
     backbone = get_backbone_class(params.backbone)() 
+    backbone_pre = get_backbone_class(params.backbone)() 
     body = get_model_class(params.model)(backbone, params)
-    pretrained = get_model_class(params.model)(backbone, params)
+    pretrained = get_model_class(params.model)(backbone_pre, params)
 
     if params.ft_features is not None:
         if params.ft_features not in body.supported_feature_selectors:
@@ -166,7 +167,9 @@ def main(params):
             if case[idx] == idx : 
                 class_shuffled.remove(case)
                 break 
-    pretrained.load_state_dict(copy.deepcopy(state))
+    pretrained.load_state_dict(state)
+    pretrained.cuda()
+    pretrained.eval()
 ########################################################################################################################
     for episode in range(n_episodes):
         # Reset models for each episode
@@ -364,6 +367,11 @@ def main(params):
                 optimizer.step()
 
                 total_loss += loss.item()
+
+            if params.layer_diff:
+                layer_diff = []
+                for p, b in zip(pretrained.named_parameters(), body.named_parameters()):
+                    layer_diff.append(np.abs((p[1]-b[1]).cpu().detach().numpy()).mean())
 
                 # if params.ft_lr_scheduler:
                 #     scheduler.step()
