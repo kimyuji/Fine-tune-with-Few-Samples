@@ -116,6 +116,7 @@ def main(params):
     train_clean_history_path = test_history_path.replace('test_history', 'clean_history')
     support_v_score_history_path = train_history_path.replace('train_history', 'v_score_support')
     query_v_score_history_path = train_history_path.replace('train_history', 'v_score_query')
+    layer_path = train_history_path.replace('train_history', 'layer_diff')
 
     params_path = get_ft_params_path(output_dir)
 
@@ -150,10 +151,13 @@ def main(params):
             body_state_path = get_final_pretrain_state_path(base_output_dir)
         else: # 원하는 epoch수의 state를 받아오고 싶다면 
             body_state_path = get_pretrain_state_path(base_output_dir, params.ft_pretrain_epoch)
-            
+        
+        if params.source_dataset == 'tieredImageNet':
+            body_state_path = './logs/baseline/output/pretrained_model/tiered/resnet18_base_LS_base/pretrain_state_0090.pt'
+
         if not os.path.exists(body_state_path):
             raise ValueError('Invalid pre-train state path: ' + body_state_path)
-            
+
         print('Using pre-train state:')
         print(body_state_path)
         print()
@@ -168,8 +172,13 @@ def main(params):
                 class_shuffled.remove(case)
                 break 
     pretrained.load_state_dict(state)
-    pretrained.cuda()
     pretrained.eval()
+    layer_name = []
+    for p in  pretrained.named_parameters():
+        layer_name.append(p[0])
+    # 저장할 dataframe
+    df_layer = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
+                            columns=layer_name)
 ########################################################################################################################
     for episode in range(n_episodes):
         # Reset models for each episode
@@ -368,11 +377,6 @@ def main(params):
 
                 total_loss += loss.item()
 
-            if params.layer_diff:
-                layer_diff = []
-                for p, b in zip(pretrained.named_parameters(), body.named_parameters()):
-                    layer_diff.append(np.abs((p[1]-b[1]).cpu().detach().numpy()).mean())
-
                 # if params.ft_lr_scheduler:
                 #     scheduler.step()
 
@@ -435,10 +439,12 @@ def main(params):
             test_acc_history.append(test_acc.item())
             train_loss_history.append(train_loss)
 ################################################################################################################
+        body.cpu()
         if params.layer_diff:
             layer_diff = []
             for p, b in zip(pretrained.named_parameters(), body.named_parameters()):
                 layer_diff.append(np.abs((p[1]-b[1]).cpu().detach().numpy()).mean())
+            df_layer.loc[episode+1] = layer_diff
 
         # save model every episode
         # torch.save(head.state_dict(), output_dir+'/{}epoch_head.pt'.format(n_epoch))
@@ -457,9 +463,6 @@ def main(params):
                 df_v_score_support.to_csv(support_v_score_history_path)
             df_v_score_query.loc[episode + 1] = query_v_score
             df_v_score_query.to_csv(query_v_score_history_path)
-
-        if params.save_backbone:
-            torch.save(body.state_dict(), output_dir+'/body_{:03d}.pt'.format(episode+1))
 
         if params.ft_clean_test:
             df_train_clean.loc[episode + 1] = train_acc_clean_history
@@ -481,6 +484,7 @@ def main(params):
     df_loss.to_csv(loss_history_path)
     if params.ft_clean_test:
         df_train_clean.to_csv(train_clean_history_path)
+    df_layer.to_csv(layer_path)
 
 
 if __name__ == '__main__':

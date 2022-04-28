@@ -65,17 +65,6 @@ def main(params):
 
     layer_path = train_history_path.replace('train_history', 'layer_diff')
 
-    params_path = get_ft_params_path(output_dir)
-
-    print('Saving finetune params to {}'.format(params_path))
-    print('Saving finetune train history to {}'.format(train_history_path))
-    #print('Saving finetune validation history to {}'.format(train_history_path))
-    print()
-    
-    # 저장할 dataframe
-    df_layer = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
-                            columns=['layer{}'.format(e + 1) for e in range(42)])
-
     # Pre-train state
     pretrain_state_path = './logs/baseline/output/resnet10_simclr_LS_default/pretrain_state_1000.pt'
 
@@ -85,6 +74,13 @@ def main(params):
     state = torch.load(pretrain_state_path)
     pretrained.load_state_dict(copy.deepcopy(state))
     pretrained.eval()
+
+    layer_name = []
+    for p in  pretrained.named_parameters():
+        layer_name.append(p[0])
+    # 저장할 dataframe
+    df_layer = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
+                            columns=layer_name)
 ########################################################################################################################
     for episode in range(n_episodes):
         body_state_path = './logs/baseline/output/resnet10_simclr_LS_default/mini_test/05way_001shot_full_default/body_{:03d}.pt'.format(episode+1)
@@ -93,7 +89,7 @@ def main(params):
         
         layer_diff = []
         for p, b in zip(pretrained.named_parameters(), body.named_parameters()):
-            layer_diff.append(np.abs((p[1]-b[1]).detach().numpy()).mean())
+            layer_diff.append(np.abs((p[1].data-b[1].data).detach().numpy()).mean())
             #print(p_param.shape, b_param.shape)
 
         # opt_params = []
