@@ -52,7 +52,9 @@ class EpisodeSampler:
         # else:
         #     selected_classes = rs.permutation(self.n_classes)[:self.w]
 
-        selected_classes = rs.permutation(self.n_classes)[:self.w] # fix classes
+        selected_aux_classes = rs.permutation(self.n_classes)[:self.w+1] # fix classes
+        selected_classes = selected_aux_classes[:self.w]
+        aux_class = selected_aux_classes[-1]
         # selected_classes = [self.task_random * self.w + i for i in range(self.w)]
         # selected_classes = next(self.class_comb)
         # print(selected_classes)
@@ -64,7 +66,10 @@ class EpisodeSampler:
         for cls in selected_classes: # 해당 cls에 해당하는 sample index 중에서 sampling
             # support_indices.append(rs.choice(self.indices_by_class[cls][15:], self.s, replace=False))
             # query_indices.append(rs.choice(self.indices_by_class[cls][:15], self.q, replace=False))
-            indices.append(rs.choice(self.indices_by_class[cls], self.s + self.q, replace=False)) # 비복원 추출 # 인덱스를 추출해서 넣어야할듯 
+            try : indices.append(rs.choice(self.indices_by_class[cls], self.s + self.q, replace=False)) # 비복원 추출 # 인덱스를 추출해서 넣어야할듯 
+            except : 
+                print(cls)
+                indices.append(rs.choice(self.indices_by_class[aux_class], self.s + self.q, replace=False))
         
         # support = np.stack(support_indices)
         # query = np.stack(query_indices)

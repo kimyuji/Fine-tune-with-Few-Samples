@@ -97,6 +97,8 @@ def parse_args(mode):
     # experiments 
     parser.add_argument('--v_score', action='store_true', help='save v measurement cluster store')
     parser.add_argument('--layer_diff', action='store_true', help='save |pretrain - fine-tuned| each layers')
+    parser.add_argument('--save_LP_FT_feat', action='store_true', help='save LP and FT features of query set')
+
     parser.add_argument('--save_norm', action='store_true', help='save gradient norm of each layers')
     
     parser.add_argument('--save_succ_fail', default = False, type=bool)

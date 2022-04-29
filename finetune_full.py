@@ -18,6 +18,7 @@ from model.classifier_head import get_classifier_head_class
 from paths import get_output_directory, get_ft_output_directory, get_ft_train_history_path, get_ft_test_history_path, \
     get_final_pretrain_state_path, get_pretrain_state_path, get_ft_params_path
 from utils import *
+import time 
 #from elastic_weight_consolidation import ElasticWeightConsolidation
 
 from sklearn.cluster import KMeans 
@@ -56,6 +57,7 @@ def main(params):
     # Model
     backbone = get_backbone_class(params.backbone)() 
     backbone_pre = get_backbone_class(params.backbone)() 
+    
     body = get_model_class(params.model)(backbone, params)
     pretrained = get_model_class(params.model)(backbone_pre, params)
 
@@ -163,6 +165,12 @@ def main(params):
         print()
         state = torch.load(body_state_path)
 
+    # print time
+    now = time.localtime()
+    start = time.time()
+    print("%02d/%02d %02d:%02d:%02d" % (now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec))
+    print()
+
 
     all_cases = list(itertools.permutations(list(range(w))))
     class_shuffled = all_cases
@@ -171,8 +179,10 @@ def main(params):
             if case[idx] == idx : 
                 class_shuffled.remove(case)
                 break 
+
     pretrained.load_state_dict(state)
     pretrained.eval()
+
     layer_name = []
     for p in  pretrained.named_parameters():
         layer_name.append(p[0])
@@ -439,7 +449,20 @@ def main(params):
             test_acc_history.append(test_acc.item())
             train_loss_history.append(train_loss)
 ################################################################################################################
+        if params.save_LP_FT_feat: 
+            pretrained.cuda()
+            with torch.no_grad():
+                lp_feat = pretrained.forward_features(x_query, params.ft_features)
+
+            feature_path = os.path.join('./feature', params.target_dataset) # NOTE : no augmentation applicable
+            feature_path = os.path.join(feature_path, "{:03d}shot_full".format(s)) 
+            #feature_path = os.path.join(feature_path, 'flip')
+            os.makedirs(feature_path, exist_ok=True)
+            np.save(feature_path+'/lp_{:0.2f}.npy'.format(test_acc*100), lp_feat.cpu().numpy())
+            np.save(feature_path+'/ft_{:0.2f}.npy'.format(test_acc*100), f_query.cpu().numpy())
+
         body.cpu()
+        pretrained.cpu()
         if params.layer_diff:
             layer_diff = []
             for p, b in zip(pretrained.named_parameters(), body.named_parameters()):
@@ -452,11 +475,11 @@ def main(params):
 
         #print("Total iterations for {} epochs : {}".format(n_epoch, n_iter))
         df_train.loc[episode + 1] = train_acc_history
-        df_train.to_csv(train_history_path)
+        #df_train.to_csv(train_history_path)
         df_test.loc[episode + 1] = test_acc_history
-        df_test.to_csv(test_history_path)
+        #df_test.to_csv(test_history_path)
         df_loss.loc[episode + 1] = train_loss_history
-        df_loss.to_csv(loss_history_path)
+        #df_loss.to_csv(loss_history_path)
         if params.v_score:
             if params.n_shot != 1:
                 df_v_score_support.loc[episode + 1] = support_v_score
@@ -474,6 +497,7 @@ def main(params):
 
     fmt = 'Final Results: Acc={:5.2f} Std={:5.2f}'
     print(fmt.format(df_test.mean()[-1] * 100, 1.96 * df_test.std()[-1] / np.sqrt(n_episodes) * 100))
+    end = time.time()
 
 
     print('Saved history to:')
@@ -484,7 +508,9 @@ def main(params):
     df_loss.to_csv(loss_history_path)
     if params.ft_clean_test:
         df_train_clean.to_csv(train_clean_history_path)
-    df_layer.to_csv(layer_path)
+    if params.layer_diff:
+        df_layer.to_csv(layer_path)
+    print("\nIt took {:6.2f} to finish current training\n".format((end-start)/60))
 
 
 if __name__ == '__main__':
