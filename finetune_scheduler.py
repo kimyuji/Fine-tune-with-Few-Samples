@@ -18,6 +18,7 @@ from model.classifier_head import get_classifier_head_class
 from paths import get_output_directory, get_ft_output_directory, get_ft_train_history_path, get_ft_test_history_path, \
     get_final_pretrain_state_path, get_pretrain_state_path, get_ft_params_path
 from utils import *
+import time 
 #from elastic_weight_consolidation import ElasticWeightConsolidation
 
 from sklearn.cluster import KMeans 
@@ -40,12 +41,12 @@ def main(params):
     print()
 
     # Settings
-    n_episodes = 100
+    n_episodes = 600
     bs = params.ft_batch_size
     n_data = params.n_way * params.n_shot
     # if params.ft_with_clean:
     #     n_data = n_data*2
-    n_epoch = int( math.ceil(n_data / 4) * params.ft_epochs / math.ceil(n_data / bs) )
+    n_epoch = 100
     print()
     w = params.n_way
     s = params.n_shot
@@ -55,10 +56,10 @@ def main(params):
 
     # Model
     backbone = get_backbone_class(params.backbone)() 
-    backbone_pre = get_backbone_class(params.backbone)() 
-    
     body = get_model_class(params.model)(backbone, params)
-    pretrained = get_model_class(params.model)(backbone_pre, params)
+    if params.layer_diff:
+        backbone_pre = get_backbone_class(params.backbone)() 
+        pretrained = get_model_class(params.model)(backbone_pre, params)
 
     if params.ft_features is not None:
         if params.ft_features not in body.supported_feature_selectors:
@@ -89,6 +90,7 @@ def main(params):
                                                      num_workers=params.num_workers,
                                                      split_seed=params.split_seed, episode_seed=params.ft_episode_seed)
         support_iterator_clean = iter(support_loader_clean)
+    #print("dddd")
     # 값이 맞게끔 보증! 
     assert (len(query_loader) == n_episodes)
     assert (len(support_loader) == n_episodes * support_epochs)
@@ -112,11 +114,16 @@ def main(params):
         train_history_path = train_history_path.replace('.csv', '_{}_{}.csv'.format(params.ft_scheduler_start, params.ft_scheduler_end))
         test_history_path = test_history_path.replace('.csv', '_{}_{}.csv'.format(params.ft_scheduler_start, params.ft_scheduler_end))
 
+    loss_history_path = train_history_path.replace('train_history', 'loss_history')
+    train_clean_history_path = test_history_path.replace('test_history', 'clean_history')
+    support_v_score_history_path = train_history_path.replace('train_history', 'v_score_support')
+    query_v_score_history_path = train_history_path.replace('train_history', 'v_score_query')
     layer_path = train_history_path.replace('train_history', 'layer_diff')
 
     params_path = get_ft_params_path(output_dir)
 
-    print('\nSaving layer difference output to {}'.format(layer_path))
+    print('Saving finetune params to {}'.format(params_path))
+    print('Saving finetune train history to {}'.format(train_history_path))
     #print('Saving finetune validation history to {}'.format(train_history_path))
     print()
     # saving parameters on this json file
@@ -153,8 +160,16 @@ def main(params):
         if not os.path.exists(body_state_path):
             raise ValueError('Invalid pre-train state path: ' + body_state_path)
 
+        print('Using pre-train state:')
+        print(body_state_path)
         print()
         state = torch.load(body_state_path)
+
+    # print time
+    now = time.localtime()
+    start = time.time()
+    print("%02d/%02d %02d:%02d:%02d" %(now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec))
+    print()
 
 
     all_cases = list(itertools.permutations(list(range(w))))
@@ -165,40 +180,40 @@ def main(params):
                 class_shuffled.remove(case)
                 break 
 
-    pretrained.load_state_dict(state)
-    pretrained.eval()
+    if params.layer_diff:
+        pretrained.load_state_dict(state)
+        pretrained.eval()
+        pretrained.cpu() 
 
-    layer_name = []
-    for p in  pretrained.named_parameters():
-        if 'fc' not in p[0]:
+        layer_name = []
+        for p in pretrained.named_parameters():
             layer_name.append(p[0])
-    # 저장할 dataframe
-    df_layer = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
-                            columns=layer_name)
+        # 저장할 dataframe
+        df_layer = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
+                                columns=layer_name)
 ########################################################################################################################
     for episode in range(n_episodes):
         # Reset models for each episode
         if params.ft_no_pretrain:
             backbone = get_backbone_class(params.backbone)() 
             body = get_model_class(params.model)(backbone, params)
-            pretrained = copy.deepcopy(body)
-            pretrained.eval()
+            if params.layer_diff:
+                pretrained = copy.deepcopy(body)
+                pretrained.eval()
         else:
             if not torch_pretrained:
                 body.load_state_dict(copy.deepcopy(state))  # note, override model.load_state_dict to change this behavior.
 
         head = get_classifier_head_class(params.ft_head)(512, params.n_way, params)  # TODO: apply ft_features
-        rand_init = copy.deepcopy(head)
-        rand_init.eval()
 
         body.cuda()
         head.cuda()
 
         opt_params = []
-        if params.ft_train_head:
-            opt_params.append({'params': head.parameters()})
-        if params.ft_train_body:
-            opt_params.append({'params': body.parameters()})
+        # if params.ft_train_head:
+        #     opt_params.append({'params': head.parameters()})
+        # if params.ft_train_body:
+        opt_params.append({'params': body.parameters()})
 
         # Optimizer and Learning Rate Scheduler
         # select optimizer
@@ -236,7 +251,7 @@ def main(params):
         f_query = None
         y_query = torch.arange(w).repeat_interleave(q).cuda() 
 
-        if use_fixed_features:  # load data and extract features once per episode
+        if use_fixed_features or params.ft_update_scheduler:  # load data and extract features once per episode
             with torch.no_grad():
                 x_support, _ = next(support_iterator)
                 x_support = x_support.cuda()
@@ -255,6 +270,7 @@ def main(params):
         test_acc_history = []
         train_loss_history = []
         train_acc_clean_history = []
+        train_grad_history = []
         support_v_score = []
         query_v_score = []
 
@@ -263,6 +279,11 @@ def main(params):
             # Train
             body.train()
             head.train()
+
+
+        if params.ft_update_scheduler == 'body-LP':		
+            if epoch == 50:
+                opt_params.append({'params': head.parameters()})
 
             # 4 augmentation methods : mixup, cutmix, manifold, augmentation(transform)
             # mixup, cutmix, manifold mixup need 2 labels <- mix_bool == True
@@ -451,33 +472,55 @@ def main(params):
             np.save(feature_path+'/ft_{:0.2f}.npy'.format(test_acc*100), f_query.cpu().numpy())
 
         body.cpu()
-        pretrained.cpu()
-        head.cpu()
-        layer_diff = []
-        # layer diff!!
-        for p, b in zip(pretrained.named_parameters(), body.named_parameters()):
-            if 'fc' not in p[0] and 'classifier' not in p[0]:
+        if params.layer_diff:
+            layer_diff = []
+            for p, b in zip(pretrained.named_parameters(), body.named_parameters()):
                 layer_diff.append(np.abs((p[1]-b[1]).cpu().detach().numpy()).mean())
-        for r, c in zip(rand_init.named_parameters(), head.named_parameters()):
-            layer_diff.append(np.abs((r[1]-c[1]).cpu().detach().numpy()).mean())
-        df_layer.loc[episode+1] = layer_diff
+            df_layer.loc[episode+1] = layer_diff
 
         # save model every episode
         # torch.save(head.state_dict(), output_dir+'/{}epoch_head.pt'.format(n_epoch))
         # torch.save(body.state_dict(), output_dir+'/{}epoch_body.pt'.format(n_epoch))
 
         #print("Total iterations for {} epochs : {}".format(n_epoch, n_iter))
-        fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_acc={:6.2f}'
-        print(fmt.format(episode, train_loss, train_acc_history[-1] * 100, test_acc_history[-1] * 100))
+        df_train.loc[episode + 1] = train_acc_history
+        df_train.to_csv(train_history_path)
+        df_test.loc[episode + 1] = test_acc_history
+        df_test.to_csv(test_history_path)
+        df_loss.loc[episode + 1] = train_loss_history
+        df_loss.to_csv(loss_history_path)
+
+        if params.v_score:
+            if params.n_shot != 1:
+                df_v_score_support.loc[episode + 1] = support_v_score
+                df_v_score_support.to_csv(support_v_score_history_path)
+            df_v_score_query.loc[episode + 1] = query_v_score
+            df_v_score_query.to_csv(query_v_score_history_path)
+
+        if params.ft_clean_test:
+            df_train_clean.loc[episode + 1] = train_acc_clean_history
+            fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} clean_acc={:6.2f} test_acc={:6.2f}'
+            print(fmt.format(episode, train_loss, train_acc_history[-1] * 100, train_acc_clean_history[-1] * 100, test_acc_history[-1] * 100))
+        else: 
+            fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_acc={:6.2f}'
+            print(fmt.format(episode, train_loss, train_acc_history[-1] * 100, test_acc_history[-1] * 100))
 
     fmt = 'Final Results: Acc={:5.2f} Std={:5.2f}'
     print(fmt.format(df_test.mean()[-1] * 100, 1.96 * df_test.std()[-1] / np.sqrt(n_episodes) * 100))
+    end = time.time()
 
 
     print('Saved history to:')
     print(train_history_path)
     print(test_history_path)
-    df_layer.to_csv(layer_path)
+    df_train.to_csv(train_history_path)
+    df_test.to_csv(test_history_path)
+    df_loss.to_csv(loss_history_path)
+    if params.ft_clean_test:
+        df_train_clean.to_csv(train_clean_history_path)
+    if params.layer_diff:
+        df_layer.to_csv(layer_path)
+    print("\nIt took {:6.2f} to finish current training\n".format((end-start)/60))
 
 
 if __name__ == '__main__':

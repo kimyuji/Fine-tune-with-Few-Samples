@@ -46,7 +46,7 @@ def main(params):
     n_data = params.n_way * params.n_shot
     # if params.ft_with_clean:
     #     n_data = n_data*2
-    n_epoch = int( math.ceil(n_data / 4) * params.ft_epochs / math.ceil(n_data / bs) )
+    n_epoch = 100
     print()
     w = params.n_way
     s = params.n_shot
@@ -56,10 +56,10 @@ def main(params):
 
     # Model
     backbone = get_backbone_class(params.backbone)() 
-    backbone_pre = get_backbone_class(params.backbone)() 
-    
     body = get_model_class(params.model)(backbone, params)
-    pretrained = get_model_class(params.model)(backbone_pre, params)
+    if params.layer_diff:
+        backbone_pre = get_backbone_class(params.backbone)() 
+        pretrained = get_model_class(params.model)(backbone_pre, params)
 
     if params.ft_features is not None:
         if params.ft_features not in body.supported_feature_selectors:
@@ -168,7 +168,7 @@ def main(params):
     # print time
     now = time.localtime()
     start = time.time()
-    print("%02d/%02d %02d:%02d:%02d" % (now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec))
+    print("%02d/%02d %02d:%02d:%02d" %(now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec))
     print()
 
 
@@ -180,21 +180,26 @@ def main(params):
                 class_shuffled.remove(case)
                 break 
 
-    pretrained.load_state_dict(state)
-    pretrained.eval()
+    if params.layer_diff:
+        pretrained.load_state_dict(state)
+        pretrained.eval()
+        pretrained.cpu() 
 
-    layer_name = []
-    for p in  pretrained.named_parameters():
-        layer_name.append(p[0])
-    # 저장할 dataframe
-    df_layer = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
-                            columns=layer_name)
+        layer_name = []
+        for p in pretrained.named_parameters():
+            layer_name.append(p[0])
+        # 저장할 dataframe
+        df_layer = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
+                                columns=layer_name)
 ########################################################################################################################
     for episode in range(n_episodes):
         # Reset models for each episode
         if params.ft_no_pretrain:
             backbone = get_backbone_class(params.backbone)() 
             body = get_model_class(params.model)(backbone, params)
+            if params.layer_diff:
+                pretrained = copy.deepcopy(body)
+                pretrained.eval()
         else:
             if not torch_pretrained:
                 body.load_state_dict(copy.deepcopy(state))  # note, override model.load_state_dict to change this behavior.
@@ -246,7 +251,7 @@ def main(params):
         f_query = None
         y_query = torch.arange(w).repeat_interleave(q).cuda() 
 
-        if use_fixed_features:  # load data and extract features once per episode
+        if use_fixed_features or params.ft_update_scheduler:  # load data and extract features once per episode
             with torch.no_grad():
                 x_support, _ = next(support_iterator)
                 x_support = x_support.cuda()
@@ -462,7 +467,6 @@ def main(params):
             np.save(feature_path+'/ft_{:0.2f}.npy'.format(test_acc*100), f_query.cpu().numpy())
 
         body.cpu()
-        pretrained.cpu()
         if params.layer_diff:
             layer_diff = []
             for p, b in zip(pretrained.named_parameters(), body.named_parameters()):
@@ -475,11 +479,12 @@ def main(params):
 
         #print("Total iterations for {} epochs : {}".format(n_epoch, n_iter))
         df_train.loc[episode + 1] = train_acc_history
-        #df_train.to_csv(train_history_path)
+        df_train.to_csv(train_history_path)
         df_test.loc[episode + 1] = test_acc_history
-        #df_test.to_csv(test_history_path)
+        df_test.to_csv(test_history_path)
         df_loss.loc[episode + 1] = train_loss_history
-        #df_loss.to_csv(loss_history_path)
+        df_loss.to_csv(loss_history_path)
+
         if params.v_score:
             if params.n_shot != 1:
                 df_v_score_support.loc[episode + 1] = support_v_score

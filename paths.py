@@ -164,6 +164,8 @@ def get_ft_output_directory(params, makedirs=True, experiment=False):
         path = os.path.join(path, 'manifold_aug')
     elif params.ft_label_smoothing!=0:
         path = os.path.join(path, 'label_smoothing')
+    elif params.ft_update_scheduler:
+        path = os.path.join(path, params.ft_update_scheduler)
 
     if params.ft_no_pretrain:
         path = path.replace("default", "no_pretrain")

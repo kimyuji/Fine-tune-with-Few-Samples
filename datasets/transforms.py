@@ -26,8 +26,8 @@ def parse_transform(transform: str, image_size=224, **transform_kwargs):
         return transforms.RandomRotation(degrees=10)
 
     # check out these two! 
-    elif transform =='RandomHorizontalFlip':
-        return transforms.RandomHorizontalFlip(p=1.0)
+    # elif transform =='RandomHorizontalFlip':
+    #     return transforms.RandomHorizontalFlip(p=1.0)
     elif transform == 'RandomResizedCrop':
         return transforms.RandomResizedCrop(image_size)
     

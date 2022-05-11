@@ -114,7 +114,6 @@ def main(params):
     loss_history_path = train_history_path.replace('train_history', 'loss_history')
     train_clean_history_path = test_history_path.replace('test_history', 'clean_history')
     support_v_score_history_path = train_history_path.replace('train_history', 'v_score_support')
-    query_v_score_history_path = train_history_path.replace('train_history', 'v_score_query')
 
     params_path = get_ft_params_path(output_dir)
 
@@ -137,7 +136,7 @@ def main(params):
                            columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
     # df_grad = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
     #                        columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
-    df_v_score_query = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
+    df_v_score_support = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
                            columns=['epoch0'])
 
     # Pre-train state
@@ -215,12 +214,12 @@ def main(params):
         criterion = nn.CrossEntropyLoss().cuda()
         #ewc = ElasticWeightConsolidation(head, criterion, optimizer)
 
-        x_support = None
+        x_support = next(support_iterator)[0].cuda()
         f_support = None
         y_support = torch.arange(w).repeat_interleave(s).cuda() # 각 요소를 반복 [000001111122222....]
 
-        x_query = next(query_iterator)[0].cuda()
-        f_query = None
+        #x_query = next(query_iterator)[0].cuda()
+        f_support = None
         y_query = torch.arange(w).repeat_interleave(q).cuda() 
 
 
@@ -239,22 +238,21 @@ def main(params):
         with torch.no_grad():
             if not use_fixed_features:
                 if not torch_pretrained:
-                    f_query = body.forward_features(x_query, params.ft_features)
+                    f_support = body.forward_features(x_support, params.ft_features)
                 else:
-                    f_query = backbone(x_query)
-                    f_query = f_query.squeeze(-1).squeeze(-1)
-            p_query = head(f_query) 
-        test_acc = torch.eq(y_query, p_query.argmax(dim=1)).sum() / (w * q)
-        f_query = f_query.cpu().numpy()
-        cluster_label = y_query.cpu().numpy()
+                    f_support = backbone(x_support)
+                    f_support = f_support.squeeze(-1).squeeze(-1)
+
+        f_support = f_support.cpu().numpy()
+        cluster_label = y_support.cpu().numpy()
         kmeans = KMeans(n_clusters = w)
-        cluster_pred = kmeans.fit(f_query).labels_
+        cluster_pred = kmeans.fit(f_support).labels_
         score = v_measure_score(cluster_pred, cluster_label)
         print(score)
-        df_v_score_query.loc[episode + 1] = score
+        df_v_score_support.loc[episode + 1] = score
     
     #print(query_v_score_history_path)
-    df_v_score_query.to_csv(query_v_score_history_path.replace('.csv', '_0.csv'))
+    df_v_score_support.to_csv(support_v_score_history_path.replace('.csv', '_0.csv'))
     
     
 

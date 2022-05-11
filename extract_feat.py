@@ -47,36 +47,38 @@ def main(params):
                                                    episode_seed=params.ft_episode_seed)
 
     # augmentation
-    support_loader_flip = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=True,
-                                                     n_query_shot=q, n_episodes=n_episodes, n_epochs=n_epoch,
-                                                     augmentation='randomhorizontalflip',
-                                                     unlabeled_ratio=params.unlabeled_ratio,
-                                                     num_workers=params.num_workers,
-                                                     split_seed=params.split_seed, episode_seed=params.ft_episode_seed)
-    support_loader_crop = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=True,
-                                                     n_query_shot=q, n_episodes=n_episodes, n_epochs=n_epoch,
-                                                     augmentation='randomresizedcrop',
-                                                     unlabeled_ratio=params.unlabeled_ratio,
-                                                     num_workers=params.num_workers,
-                                                     split_seed=params.split_seed, episode_seed=params.ft_episode_seed)    
+    # support_loader_flip = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=True,
+    #                                                  n_query_shot=q, n_episodes=n_episodes, n_epochs=n_epoch,
+    #                                                  augmentation='randomhorizontalflip',
+    #                                                  unlabeled_ratio=params.unlabeled_ratio,
+    #                                                  num_workers=params.num_workers,
+    #                                                  split_seed=params.split_seed, episode_seed=params.ft_episode_seed)
+    # support_loader_crop = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=True,
+    #                                                  n_query_shot=q, n_episodes=n_episodes, n_epochs=n_epoch,
+    #                                                  augmentation='randomresizedcrop',
+    #                                                  unlabeled_ratio=params.unlabeled_ratio,
+    #                                                  num_workers=params.num_workers,
+    #                                                  split_seed=params.split_seed, episode_seed=params.ft_episode_seed)    
     # clean
     x_support, _ = next(iter(support_loader))
     x_query, _ = next(iter(query_loader))
     x_support = x_support.cuda()
     x_query = x_query.cuda()
+
     # aug
-    x_support_flip, _ = next(iter(support_loader_flip))
-    x_support_crop, _ = next(iter(support_loader_crop))
-    x_support_flip = x_support_flip.cuda()
-    x_support_crop = x_support_crop.cuda()
-    # mix
+    # x_support_flip, _ = next(iter(support_loader_flip))
+    # x_support_crop, _ = next(iter(support_loader_crop))
+    # x_support_flip = x_support_flip.cuda()
+    # x_support_crop = x_support_crop.cuda()
+
+    # mix (CutMix, MixUp)
     #lam = np.random.beta(1.0, 1.0)
-    lam = 0.5
-    bbx1, bby1, bbx2, bby2 = rand_bbox(x_support.shape, lam)
-    indices_shuffled = torch.randperm(x_support.shape[0])
-    x_support_cutmix = copy.deepcopy(x_support)
-    x_support_cutmix[:,:,bbx1:bbx2, bby1:bby2] = x_support[indices_shuffled,:,bbx1:bbx2, bby1:bby2]
-    x_support_mixup = lam * x_support[:,:,:] + (1. - lam) * x_support[indices_shuffled,:,:]
+    # lam = 0.5
+    # bbx1, bby1, bbx2, bby2 = rand_bbox(x_support.shape, lam)
+    # indices_shuffled = torch.randperm(x_support.shape[0])
+    # x_support_cutmix = copy.deepcopy(x_support)
+    # x_support_cutmix[:,:,bbx1:bbx2, bby1:bby2] = x_support[indices_shuffled,:,bbx1:bbx2, bby1:bby2]
+    # x_support_mixup = lam * x_support[:,:,:] + (1. - lam) * x_support[indices_shuffled,:,:]
 
     # load pretrained backbone file
     backbone = get_backbone_class(params.backbone)() 
@@ -93,23 +95,26 @@ def main(params):
    
     # extract features
     with torch.no_grad():
-        # # clean
-        # f_support = body.forward_features(x_support, params.ft_features)
-        # f_query = body.forward_features(x_query, params.ft_features)
+        # clean
+        f_support = body.forward_features(x_support, params.ft_features)
+        f_query = body.forward_features(x_query, params.ft_features)
+        
         # aug
-        f_flip = body.forward_features(transforms.functional.hflip(x_support), params.ft_features)
-        f_crop = body.forward_features(x_support_crop, params.ft_features)
+        # f_flip = body.forward_features(transforms.functional.hflip(x_support), params.ft_features)
+        # f_crop = body.forward_features(x_support_crop, params.ft_features)
+
         # # mix
         # f_cutmix = body.forward_features(x_support_cutmix, params.ft_features)
         # f_mixup = body.forward_features(x_support_mixup, params.ft_features)
+
         # # manifold mixup
         # f_manifold_mixup = lam * f_support[:,:] + (1. - lam) * f_support[indices_shuffled][:,:]
 
     # # clean support, query
-    # feature_path_final = os.path.join(feature_path, 'baseline')
-    # os.makedirs(feature_path_final, exist_ok=True)
-    # np.save(feature_path_final+'/support.npy', f_support.cpu().numpy())
-    # np.save(feature_path_final+'/query.npy', f_query.cpu().numpy())
+    feature_path_final = os.path.join(feature_path, 'baseline')
+    os.makedirs(feature_path_final, exist_ok=True)
+    np.save(feature_path_final+'/support.npy', f_support.cpu().numpy())
+    np.save(feature_path_final+'/query.npy', f_query.cpu().numpy())
 
     # # mix
     # feature_path_final = os.path.join(feature_path, 'cutmix')
@@ -125,13 +130,13 @@ def main(params):
     # np.save(feature_path_final+'/support.npy', f_manifold_mixup.cpu().numpy())
 
     # aug
-    feature_path_final = os.path.join(feature_path, 'flip')
-    os.makedirs(feature_path_final, exist_ok=True)
-    np.save(feature_path_final+'/support.npy', f_flip.cpu().numpy())
+    # feature_path_final = os.path.join(feature_path, 'flip')
+    # os.makedirs(feature_path_final, exist_ok=True)
+    # np.save(feature_path_final+'/support.npy', f_flip.cpu().numpy())
 
-    feature_path_final = os.path.join(feature_path, 'crop')
-    os.makedirs(feature_path_final, exist_ok=True)
-    np.save(feature_path_final+'/support.npy', f_crop.cpu().numpy())
+    # feature_path_final = os.path.join(feature_path, 'crop')
+    # os.makedirs(feature_path_final, exist_ok=True)
+    # np.save(feature_path_final+'/support.npy', f_crop.cpu().numpy())
 
     print("Saving Finished")
 
