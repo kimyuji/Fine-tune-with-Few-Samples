@@ -282,16 +282,20 @@ def main(params):
 
             if params.ft_update_scheduler == "LP-FT":
                 if epoch == 0: 
-                    #optimizer.param_groups[1]['lr'] = 0.01 # head
-                    optimizer.param_groups[1]['lr'] = 0.0
+                    optimizer.param_groups[1]['lr'] = 0.0 # body
                 elif epoch == 50: 
                     optimizer.param_groups[1]['lr'] = 0.01
-            elif params.ft_update_scheduler == "FT-LP":
+            elif params.ft_update_scheduler == "body-FT":
                 if epoch == 0: 
-                    #optimizer.param_groups[1]['lr'] = 0.01 # head
-                    optimizer.param_groups[0]['lr'] = 0.0
+                    optimizer.param_groups[0]['lr'] = 0.0 # head
                 elif epoch == 50: 
                     optimizer.param_groups[0]['lr'] = 0.01
+            elif params.ft_update_scheduler == "body-LP":
+                if epoch == 0: 
+                    optimizer.param_groups[0]['lr'] = 0.0 # head
+                elif epoch == 50: 
+                    optimizer.param_groups[0]['lr'] = 0.01
+                    optimizer.param_groups[1]['lr'] = 0.0 # body 
 
             # 4 augmentation methods : mixup, cutmix, manifold, augmentation(transform)
             # mixup, cutmix, manifold mixup need 2 labels <- mix_bool == True
