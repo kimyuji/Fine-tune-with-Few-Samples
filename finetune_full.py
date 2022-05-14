@@ -251,7 +251,7 @@ def main(params):
         f_query = None
         y_query = torch.arange(w).repeat_interleave(q).cuda() 
 
-        if use_fixed_features or params.ft_update_scheduler:  # load data and extract features once per episode
+        if use_fixed_features:  # load data and extract features once per episode
             with torch.no_grad():
                 x_support, _ = next(support_iterator)
                 x_support = x_support.cuda()
@@ -279,6 +279,19 @@ def main(params):
             # Train
             body.train()
             head.train()
+
+            if params.ft_update_scheduler == "LP-FT":
+                if epoch == 0: 
+                    #optimizer.param_groups[1]['lr'] = 0.01 # head
+                    optimizer.param_groups[1]['lr'] = 0.0
+                elif epoch == 50: 
+                    optimizer.param_groups[1]['lr'] = 0.01
+            elif params.ft_update_scheduler == "FT-LP":
+                if epoch == 0: 
+                    #optimizer.param_groups[1]['lr'] = 0.01 # head
+                    optimizer.param_groups[0]['lr'] = 0.0
+                elif epoch == 50: 
+                    optimizer.param_groups[0]['lr'] = 0.01
 
             # 4 augmentation methods : mixup, cutmix, manifold, augmentation(transform)
             # mixup, cutmix, manifold mixup need 2 labels <- mix_bool == True
@@ -385,6 +398,11 @@ def main(params):
                 
                 # if params.ft_EWC:
                 #     loss = loss + ewc._compute_consolidation_loss(1000000)
+
+                if epoch < 3:
+                    a=1
+                elif epoch >= 50 and epoch < 53:
+                    a=1
 
                 optimizer.zero_grad() 
                 loss.backward() 
