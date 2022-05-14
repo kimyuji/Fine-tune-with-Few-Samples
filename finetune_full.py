@@ -296,6 +296,9 @@ def main(params):
                 elif epoch == 50: 
                     optimizer.param_groups[0]['lr'] = 0.01
                     optimizer.param_groups[1]['lr'] = 0.0 # body 
+            elif params.ft_update_scheduler == "FT-LP":
+                if epoch == 50: 
+                    optimizer.param_groups[1]['lr'] = 0.0 # body 
 
             # 4 augmentation methods : mixup, cutmix, manifold, augmentation(transform)
             # mixup, cutmix, manifold mixup need 2 labels <- mix_bool == True
@@ -403,6 +406,7 @@ def main(params):
                 # if params.ft_EWC:
                 #     loss = loss + ewc._compute_consolidation_loss(1000000)
 
+                # for debugging
                 if epoch < 3:
                     a=1
                 elif epoch >= 50 and epoch < 53:
