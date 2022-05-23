@@ -39,6 +39,15 @@ MODEL_KEYS = {
     'byol': 'byol',
 }
 
+AUG_KEYS = {
+    'base': 'base',
+    'simclr': 'simclr',
+    'simsiam': 'simsiam',
+    'moco': 'moco',
+    'swav': 'swav',
+    'byol': 'byol',
+}
+
 
 def get_output_directory(params: Namespace, pls_previous=False, makedirs=True):
     # python ./finetune_new.py --ls --source_dataset miniImageNet --target_dataset ChestX --backbone resnet10 --model simclr  --ft_parts head --split_seed 1
@@ -160,8 +169,6 @@ def get_ft_output_directory(params, makedirs=True, experiment=False):
         path = os.path.join(path, params.ft_mixup)
     elif params.ft_manifold_mixup:
         path = os.path.join(path, 'manifold_mixup')
-    elif params.ft_manifold_aug:
-        path = os.path.join(path, 'manifold_aug')
     elif params.ft_label_smoothing!=0:
         path = os.path.join(path, 'label_smoothing')
     elif params.ft_update_scheduler:
@@ -170,6 +177,8 @@ def get_ft_output_directory(params, makedirs=True, experiment=False):
     if params.ft_no_pretrain:
         path = path.replace("default", "no_pretrain")
 
+    if params.ft_scheduler_start != params.ft_scheduler_end:
+        path = os.path.join(path, 'scheduler_{:03d}_{:03d}'.format(params.ft_scheduler_start, params.ft_scheduler_end))
 
     if makedirs:
         os.makedirs(path, exist_ok=True)
@@ -186,3 +195,12 @@ def get_ft_train_history_path(output_directory):
 
 def get_ft_test_history_path(output_directory):
     return os.path.join(output_directory, 'test_history.csv')
+
+def get_ft_loss_history_path(output_directory):
+    return os.path.join(output_directory, 'loss_history.csv')
+
+def get_ft_clean_history_path(output_directory):
+    return os.path.join(output_directory, 'clean_history.csv')
+
+def get_ft_v_score_history_path(output_directory):
+    return os.path.join(output_directory, 'v_score_support.csv'), os.path.join(output_directory, 'v_score_query.csv')

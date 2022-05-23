@@ -99,6 +99,7 @@ def parse_args(mode):
     parser.add_argument('--layer_diff', action='store_true', help='save |pretrain - fine-tuned| each layers')
     parser.add_argument('--save_LP_FT_feat', action='store_true', help='save LP and FT features of query set')
     parser.add_argument('--ft_update_scheduler', default=None, type=str ,help="version : {LP-FT, body-FT, body-LP, LP-body}")
+    parser.add_argument('--TTA', default=None, type=str, help='version : {mean, }]')
 
     parser.add_argument('--save_norm', action='store_true', help='save gradient norm of each layers')
     

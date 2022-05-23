@@ -42,3 +42,23 @@ def sparsity(cl_data_file):
         cl_sparsity.append(np.mean([np.sum(x!=0) for x in cl_data_file[cl] ])  ) 
 
     return np.mean(cl_sparsity) 
+
+
+
+# def 
+
+# # optimizer configuration
+# _optimizer_map = {
+#     'SGD': ResNet10,
+#     'Adam': ResNet18,
+#     'RMSprop' : Torch_ResNet18,
+#     'Adagrad' : Torch_ResNet34,
+#     'RMSprop_no_momentum' : Torch_ResNet50
+# }
+
+
+# def get_backbone_class(key):
+#     if key in _optimizer_map:
+#         return _optimizer_map[key]
+#     else:
+#         raise ValueError('Invalid backbone: {}'.format(key))

@@ -3,7 +3,6 @@ import json
 import math
 import os
 import pickle
-from this import d
 import pandas as pd
 import torch.nn as nn
 import torchsummary as summary
@@ -16,7 +15,8 @@ from io_utils import parse_args
 from model import get_model_class
 from model.classifier_head import get_classifier_head_class
 from paths import get_output_directory, get_ft_output_directory, get_ft_train_history_path, get_ft_test_history_path, \
-    get_final_pretrain_state_path, get_pretrain_state_path, get_ft_params_path
+    get_final_pretrain_state_path, get_pretrain_state_path, get_ft_params_path, get_ft_v_score_history_path, \
+    get_ft_loss_history_path, get_ft_clean_history_path
 from utils import *
 import time 
 #from elastic_weight_consolidation import ElasticWeightConsolidation
@@ -102,23 +102,9 @@ def main(params):
     # Output (history, params)
     train_history_path = get_ft_train_history_path(output_dir)
     test_history_path = get_ft_test_history_path(output_dir)
-    
-    if params.ft_manifold_aug:
-        train_history_path = train_history_path.replace('.csv', '_{}.csv'.format(params.ft_manifold_aug))
-        test_history_path = test_history_path.replace('.csv', '_{}.csv'.format(params.ft_manifold_aug))
-    if params.ft_label_smoothing != 0:
-        train_history_path = train_history_path.replace('.csv', '_ls.csv')
-        test_history_path = test_history_path.replace('.csv', '_ls.csv')
-
-    if params.ft_scheduler_start != params.ft_scheduler_end:
-        train_history_path = train_history_path.replace('.csv', '_{}_{}.csv'.format(params.ft_scheduler_start, params.ft_scheduler_end))
-        test_history_path = test_history_path.replace('.csv', '_{}_{}.csv'.format(params.ft_scheduler_start, params.ft_scheduler_end))
-
-    loss_history_path = train_history_path.replace('train_history', 'loss_history')
-    train_clean_history_path = test_history_path.replace('test_history', 'clean_history')
-    support_v_score_history_path = train_history_path.replace('train_history', 'v_score_support')
-    query_v_score_history_path = train_history_path.replace('train_history', 'v_score_query')
-    layer_path = train_history_path.replace('train_history', 'layer_diff')
+    loss_history_path = get_ft_loss_history_path(output_dir)
+    train_clean_history_path = get_ft_clean_history_path(output_dir)
+    support_v_score_history_path, query_v_score_history_path = get_ft_v_score_history_path(output_dir)
 
     params_path = get_ft_params_path(output_dir)
 
@@ -142,9 +128,9 @@ def main(params):
     # df_grad = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
     #                        columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
     df_v_score_support = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
-                           columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
+                            columns=['epoch{}'.format(e+1) for e in range(n_epoch)])
     df_v_score_query = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
-                           columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
+                           columns=['epoch{}'.format(e) for e in range(n_epoch+1)])
 
     # Pre-train state
     
@@ -246,10 +232,20 @@ def main(params):
         x_support = None
         f_support = None
         y_support = torch.arange(w).repeat_interleave(s).cuda() # 각 요소를 반복 [000001111122222....]
+        cluster_y_support = y_support.cpu().numpy()
 
         x_query = next(query_iterator)[0].cuda()
         f_query = None
         y_query = torch.arange(w).repeat_interleave(q).cuda() 
+        cluster_y_query = y_query.cpu().numpy()
+        
+        train_acc_history = []
+        test_acc_history = []
+        train_loss_history = []
+        train_acc_clean_history = []
+        train_grad_history = []
+        support_v_score = []
+        query_v_score = []
 
         if use_fixed_features:  # load data and extract features once per episode
             with torch.no_grad():
@@ -265,14 +261,15 @@ def main(params):
 
                     if params.ft_clean_test: # no aug, head
                         f_support_clean = copy.deepcopy(f_support)
+        else:
+            # V-measure query for epoch0, augmentation and full
+            with torch.no_grad():
+                f_query = body.forward_features(x_query, params.ft_features)
+                f_query_0 = f_query.cpu().numpy()
+                kmeans = KMeans(n_clusters = w)
+                cluster_pred = kmeans.fit(f_query_0).labels_
+                query_v_score.append(v_measure_score(cluster_pred, cluster_y_query))
 
-        train_acc_history = []
-        test_acc_history = []
-        train_loss_history = []
-        train_acc_clean_history = []
-        train_grad_history = []
-        support_v_score = []
-        query_v_score = []
 
 #############################################################################################################
         for epoch in range(n_epoch):
@@ -402,15 +399,6 @@ def main(params):
                     loss = criterion(pred, y_batch) * lam + criterion(pred, y_shuffled_batch) * (1. - lam)
                 else:
                     loss = criterion(pred, y_batch)
-                
-                # if params.ft_EWC:
-                #     loss = loss + ewc._compute_consolidation_loss(1000000)
-
-                # for debugging
-                if epoch < 3:
-                    a=1
-                elif epoch >= 50 and epoch < 53:
-                    a=1
 
                 optimizer.zero_grad() 
                 loss.backward() 
@@ -440,15 +428,14 @@ def main(params):
                 train_acc_clean = torch.eq(y_support, pred_clean.argmax(dim=1)).sum() / n_data
                 train_acc_clean_history.append(train_acc_clean.item())
             
-            # Calculate V measurement score
+            # V-measure support
             if params.v_score and params.n_shot != 1:
                 with torch.no_grad():
                     f_support = body.forward_features(x_support, params.ft_features)
                 f_support = f_support.cpu().numpy()
-                cluster_label = y_support.cpu().numpy()
                 kmeans = KMeans(n_clusters = w)
                 cluster_pred = kmeans.fit(f_support).labels_
-                support_v_score.append(v_measure_score(cluster_pred, cluster_label))
+                support_v_score.append(v_measure_score(cluster_pred, cluster_y_support))
 
 
             # Test Using Query
@@ -462,12 +449,12 @@ def main(params):
                             f_query = f_query.squeeze(-1).squeeze(-1)
                     p_query = head(f_query) 
                 test_acc = torch.eq(y_query, p_query.argmax(dim=1)).sum() / (w * q)
+                # V-measure query
                 if params.v_score:
                     f_query = f_query.cpu().numpy()
-                    cluster_label = y_query.cpu().numpy()
                     kmeans = KMeans(n_clusters = w)
                     cluster_pred = kmeans.fit(f_query).labels_
-                    query_v_score.append(v_measure_score(cluster_pred, cluster_label))
+                    query_v_score.append(v_measure_score(cluster_pred, cluster_y_query))
             else:
                 test_acc = torch.tensor(0)
             
@@ -491,13 +478,6 @@ def main(params):
             os.makedirs(feature_path, exist_ok=True)
             np.save(feature_path+'/lp_{:0.2f}.npy'.format(test_acc*100), lp_feat.cpu().numpy())
             np.save(feature_path+'/ft_{:0.2f}.npy'.format(test_acc*100), f_query.cpu().numpy())
-
-        body.cpu()
-        if params.layer_diff:
-            layer_diff = []
-            for p, b in zip(pretrained.named_parameters(), body.named_parameters()):
-                layer_diff.append(np.abs((p[1]-b[1]).cpu().detach().numpy()).mean())
-            df_layer.loc[episode+1] = layer_diff
 
         # save model every episode
         # torch.save(head.state_dict(), output_dir+'/{}epoch_head.pt'.format(n_epoch))
@@ -539,8 +519,6 @@ def main(params):
     df_loss.to_csv(loss_history_path)
     if params.ft_clean_test:
         df_train_clean.to_csv(train_clean_history_path)
-    if params.layer_diff:
-        df_layer.to_csv(layer_path)
     print("\nIt took {:6.2f} to finish current training\n".format((end-start)/60))
 
 
