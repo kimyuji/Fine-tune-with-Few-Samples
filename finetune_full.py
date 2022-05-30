@@ -225,8 +225,8 @@ def main(params):
             scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.5)
 
         # Loss function
-        #criterion = nn.CrossEntropyLoss(label_smoothing=params.ft_label_smoothing).cuda()
-        criterion = nn.CrossEntropyLoss().cuda()
+        criterion = nn.CrossEntropyLoss(label_smoothing=params.ft_label_smoothing).cuda()
+        #criterion = nn.CrossEntropyLoss().cuda()
         #ewc = ElasticWeightConsolidation(head, criterion, optimizer)
 
         x_support = None

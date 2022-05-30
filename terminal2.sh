@@ -1,24 +1,40 @@
 for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"  "tieredImageNet_test" "cars" "cub" "places" "plantae"; do
-  python ./finetune_full.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --ft_parts full --split_seed 1 --ft_intermediate_test --n_shot 5 --gpu_idx 1 --ft_update_scheduler FT-LP
+  python ./finetune_full.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --ft_parts full --split_seed 1 --ft_intermediate_test --n_shot 10 --gpu_idx 1 --ft_batch_size 8 --ft_augmentation base
+done
+
+for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"  "tieredImageNet_test" "cars" "cub" "places" "plantae"; do
+  python ./finetune_full.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --ft_parts full --split_seed 1 --ft_intermediate_test --n_shot 1 --gpu_idx 1 --ft_augmentation base --ft_label_smoothing 0.2 --v_score
+done
+
+for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"  "tieredImageNet_test" "cars" "cub" "places" "plantae"; do
+  python ./finetune_full.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --ft_parts full --split_seed 1 --ft_intermediate_test --n_shot 5 --gpu_idx 1 --ft_augmentation base --ft_label_smoothing 0.2 --v_score
 done
 
 
-# for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
-#   python ./finetune_full.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --ft_parts full --split_seed 1 --ft_intermediate_test --n_shot 1 --gpu_idx 1 --v_score --ft_mixup both --ft_scheduler_start 0 --ft_scheduler_end 70
-# done
+for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"  "tieredImageNet_test" "cars" "cub" "places" "plantae"; do
+  python ./finetune_full.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --ft_parts full --split_seed 1 --ft_intermediate_test --n_shot 10 --gpu_idx 1 --ft_batch_size 8 --ft_augmentation randomresizedcrop
+done
 
-# for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
-#   python ./finetune_full.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --ft_parts full --split_seed 1 --ft_intermediate_test --n_shot 1 --gpu_idx 1 --v_score --ft_mixup both --ft_scheduler_start 30 --ft_scheduler_end 100
-# done
+for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"  "tieredImageNet_test" "cars" "cub" "places" "plantae"; do
+  python ./finetune_full.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --ft_parts full --split_seed 1 --ft_intermediate_test --n_shot 10 --gpu_idx 1 --ft_batch_size 8 --ft_augmentation randomcoloredjitter
+done
 
-# for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX" ; do
-#   python ./finetune_full.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --ft_parts full --split_seed 1 --ft_intermediate_test --n_shot 5 --gpu_idx 1 --v_score --ft_mixup both --ft_scheduler_start 0 --ft_scheduler_end 70
-# done
+for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"  "tieredImageNet_test" "cars" "cub" "places" "plantae"; do
+  python ./finetune_full.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --ft_parts full --split_seed 1 --ft_intermediate_test --n_shot 10 --gpu_idx 1 --ft_batch_size 8 --ft_augmentation randomhorizontalflip
+done
 
-# for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
-#   python ./finetune_full.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --ft_parts full --split_seed 1 --ft_intermediate_test --n_shot 5 --gpu_idx 1 --v_score --ft_mixup both --ft_scheduler_start 30 --ft_scheduler_end 100
-# done
+for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"  "tieredImageNet_test" "cars" "cub" "places" "plantae"; do
+  python ./finetune_full.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --ft_parts full --split_seed 1 --ft_intermediate_test --n_shot 10 --gpu_idx 1 --ft_batch_size 8 --ft_mixup diff
+done
 
+for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"  "tieredImageNet_test" "cars" "cub" "places" "plantae"; do
+  python ./finetune_full.py --ls --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr --ft_parts full --split_seed 1 --ft_intermediate_test --n_shot 10 --gpu_idx 1 --ft_batch_size 8 --ft_mixup same
+done
+
+
+for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"  "tieredImageNet_test" "cars" "cub" "places" "plantae"; do
+  python ./finetune_full.py --ls --source_dataset tieredImageNet --target_dataset $TARGET --backbone resnet18 --model base --ft_parts full --split_seed 1 --ft_intermediate_test --n_shot 10 --gpu_idx 1 --ft_batch_size 8 --v_score
+done
 
 
 

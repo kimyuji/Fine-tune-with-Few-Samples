@@ -170,7 +170,7 @@ def get_ft_output_directory(params, makedirs=True, experiment=False):
     elif params.ft_manifold_mixup:
         path = os.path.join(path, 'manifold_mixup')
     elif params.ft_label_smoothing!=0:
-        path = os.path.join(path, 'label_smoothing')
+        path = os.path.join(path, 'label_smoothing_{}'.format(params.ft_label_smoothing))
     elif params.ft_update_scheduler:
         path = os.path.join(path, params.ft_update_scheduler)
 
