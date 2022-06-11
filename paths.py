@@ -158,30 +158,36 @@ def get_ft_output_directory(params, makedirs=True, experiment=False):
     if experiment == True:
         path = path.replace("baseline/output", "experiment/perplexity")
     
+    if params.ft_SS:
+        path = os.path.join(path, params.ft_SS)
+
     if params.ft_augmentation :
         path = os.path.join(path, 'augmentation')
         path = os.path.join(path, params.ft_augmentation)
-    elif params.ft_cutmix:
+    if params.ft_cutmix:
         path = os.path.join(path, 'cutmix')
         path = os.path.join(path, params.ft_cutmix)
-    elif params.ft_mixup:
+    if params.ft_mixup:
         path = os.path.join(path, 'mixup')
         path = os.path.join(path, params.ft_mixup)
-    elif params.ft_manifold_mixup:
+    if params.ft_manifold_mixup:
         path = os.path.join(path, 'manifold_mixup')
-    elif params.ft_label_smoothing!=0:
+    if params.ft_label_smoothing!=0:
         path = os.path.join(path, 'label_smoothing_{}'.format(params.ft_label_smoothing))
-    elif params.ft_update_scheduler:
+    if params.ft_update_scheduler:
         path = os.path.join(path, params.ft_update_scheduler)
+    
 
     if params.ft_no_pretrain:
         path = path.replace("default", "no_pretrain")
 
     if params.ft_scheduler_start != params.ft_scheduler_end:
         path = os.path.join(path, 'scheduler_{:03d}_{:03d}'.format(params.ft_scheduler_start, params.ft_scheduler_end))
-
+    
     if makedirs:
         os.makedirs(path, exist_ok=True)
+
+    
     return path
 
 

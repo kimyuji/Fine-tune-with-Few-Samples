@@ -79,7 +79,7 @@ def parse_args(mode):
 
     # option for training
     parser.add_argument('--ft_clean_test', action='store_true', help ='Test on nonaugmented samples every epoch')
-    parser.add_argument('--ft_with_clean', action='store_true', help="train augmented imgs with original imgs")
+    parser.add_argument('--ft_train_with_clean', action='store_true', help="{This option is only available on full update with augmentation used} train augmented imgs with original imgs")
     parser.add_argument('--ft_no_pretrain', action='store_true', help="if true, pretrained parts are random initialized")
 
     # augmentation options
@@ -100,6 +100,7 @@ def parse_args(mode):
     parser.add_argument('--save_LP_FT_feat', action='store_true', help='save LP and FT features of query set')
     parser.add_argument('--ft_update_scheduler', default=None, type=str ,help="version : {LP-FT, body-FT, body-LP, LP-body}")
     parser.add_argument('--TTA', default=None, type=str, help='version : {mean, }]')
+    parser.add_argument('--ft_SS', default=None, type=str, help='{add_simclr, supcon, }')
 
     parser.add_argument('--save_norm', action='store_true', help='save gradient norm of each layers')
     
@@ -172,6 +173,8 @@ def parse_args(mode):
         raise AssertionError('Invalid params.ft_parts: {}'.format(params.ft_parts))
     if params.ft_parts=='head' and params.v_score:
         raise AssertionError('finetune parts should be either body or full in ordr to calculate vscore')
+    if (params.ft_SS and params.ft_augmentation) or (params.ft_SS and params.ft_mixup) or (params.ft_SS and params.ft_cutmix) or (params.ft_SS and params.ft_manifold_mixup):
+        raise AssertionError('You cant use any augmentation in self-supervised learning')
 
     # Assign num_classes
     if params.dataset == 'miniImageNet':

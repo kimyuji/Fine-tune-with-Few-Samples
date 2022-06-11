@@ -6,7 +6,6 @@ import pickle
 import pandas as pd
 import torch.nn as nn
 import torchsummary as summary
-from torchvision import transforms
 import itertools
 from backbone import get_backbone_class
 import backbone
@@ -14,22 +13,13 @@ from datasets.dataloader import get_labeled_episodic_dataloader
 from datasets.transforms import rand_bbox
 from io_utils import parse_args
 from model import get_model_class
-from model.simclr import NTXentLoss
+from model import simclr
 from model.classifier_head import get_classifier_head_class
 from paths import get_output_directory, get_ft_output_directory, get_ft_train_history_path, get_ft_test_history_path, \
     get_final_pretrain_state_path, get_pretrain_state_path, get_ft_params_path, get_ft_v_score_history_path, \
     get_ft_loss_history_path, get_ft_clean_history_path
 from utils import *
 import time 
-
-size = 224
-color_jitter = transforms.ColorJitter(0.8, 0.8, 0.8, 0.2)
-transforms_ss = transforms.Compose([transforms.RandomResizedCrop(size=size),
-                                        transforms.RandomHorizontalFlip(),
-                                        transforms.RandomApply([color_jitter], p=0.8),
-                                        transforms.RandomGrayscale(p=0.2),
-                                        transforms.GaussianBlur(kernel_size=(5,5))])
-
 #from elastic_weight_consolidation import ElasticWeightConsolidation
 
 from sklearn.cluster import KMeans 
@@ -100,6 +90,7 @@ def main(params):
                                                      num_workers=params.num_workers,
                                                      split_seed=params.split_seed, episode_seed=params.ft_episode_seed)
         support_iterator_clean = iter(support_loader_clean)
+        
     #print("dddd")
     # 값이 맞게끔 보증! 
     assert (len(query_loader) == n_episodes)
@@ -240,7 +231,6 @@ def main(params):
 
         # Loss function
         criterion = nn.CrossEntropyLoss(label_smoothing=params.ft_label_smoothing).cuda()
-        simclr_criterion = NTXentLoss(temperature=1.0, use_cosine_similarity=True)
         #criterion = nn.CrossEntropyLoss().cuda()
         #ewc = ElasticWeightConsolidation(head, criterion, optimizer)
 
@@ -398,11 +388,6 @@ def main(params):
                         f_batch = body.forward_features(x_support_aug[batch_indices], params.ft_features)
                     else:
                         f_batch = body.forward_features(x_support[batch_indices], params.ft_features)
-                        if params.ft_SS == 'add_simclr':
-                            x_support_ss_1 = transforms_ss(x_support)
-                            x_support_ss_2 = transforms_ss(x_support)
-                            z1 = body.forward_features(x_support_ss_1[batch_indices], params.ft_features)
-                            z2 = body.forward_features(x_support_ss_1[batch_indices], params.ft_features)
 
                     if params.ft_manifold_mixup:
                         f_batch_shuffled = body.forward_features(x_support[indices_shuffled[batch_indices]], params.ft_features)
@@ -428,9 +413,6 @@ def main(params):
                     loss = criterion(pred, y_batch) * lam + criterion(pred, y_shuffled_batch) * (1. - lam)
                 else:
                     loss = criterion(pred, y_batch)
-                    if params.ft_SS == "add_simclr":
-                        loss_ss = simclr_criterion(z1, z2)
-                        loss = loss + loss_ss
 
                 optimizer.zero_grad() 
                 loss.backward() 
