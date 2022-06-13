@@ -99,8 +99,9 @@ def parse_args(mode):
     parser.add_argument('--layer_diff', action='store_true', help='save |pretrain - fine-tuned| each layers')
     parser.add_argument('--save_LP_FT_feat', action='store_true', help='save LP and FT features of query set')
     parser.add_argument('--ft_update_scheduler', default=None, type=str ,help="version : {LP-FT, body-FT, body-LP, LP-body}")
-    parser.add_argument('--TTA', default=None, type=str, help='version : {mean, }]')
-    parser.add_argument('--ft_SS', default=None, type=str, help='{add_simclr, supcon, }')
+    parser.add_argument('--TTA_ver', default='mean', type=str, help='version : {mean, }]')
+    parser.add_argument('--ft_SS', default=None, type=str, help='{add_simclr, add_supcon, add_ft_supcon}')
+    parser.add_argument('--ft_tau', default=0.5, type=float, help='Tau for contrastive loss')
 
     parser.add_argument('--save_norm', action='store_true', help='save gradient norm of each layers')
     
@@ -153,7 +154,7 @@ def parse_args(mode):
     elif mode == 'save_features':
         parser.add_argument('--split'       , default='novel', help='base/val/novel') #default novel, but you can also test base/val class accuracy if you want
         parser.add_argument('--save_iter', default=-1, type=int,help ='save feature from the model trained in x epoch, use the best model if x is -1')
-    elif mode == 'test':
+    elif mode == 'test': 
         parser.add_argument('--split'       , default='novel', help='base/val/novel') #default novel, but you can also test base/val class accuracy if you want
         parser.add_argument('--save_iter', default=-1, type=int,help ='saved feature from the model trained in x epoch, use the best model if x is -1')
         parser.add_argument('--adaptation'  , action='store_true', help='further adaptation in test time or not')

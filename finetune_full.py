@@ -16,6 +16,7 @@ from io_utils import parse_args
 from model import get_model_class
 from model.simclr import NTXentLoss
 from model.supcon import SupConLoss
+from model.supcon import FT_SupConLoss
 from model.classifier_head import get_classifier_head_class
 from paths import get_output_directory, get_ft_output_directory, get_ft_train_history_path, get_ft_test_history_path, \
     get_final_pretrain_state_path, get_pretrain_state_path, get_ft_params_path, get_ft_v_score_history_path, \
@@ -69,9 +70,6 @@ def main(params):
     # Model
     backbone = get_backbone_class(params.backbone)() 
     body = get_model_class(params.model)(backbone, params)
-    if params.layer_diff:
-        backbone_pre = get_backbone_class(params.backbone)() 
-        pretrained = get_model_class(params.model)(backbone_pre, params)
 
     if params.ft_features is not None:
         if params.ft_features not in body.supported_feature_selectors:
@@ -121,6 +119,9 @@ def main(params):
     if params.ft_train_with_clean:
         train_history_path = train_history_path.replace(".csv", "_train_clean.csv")
         test_history_path = test_history_path.replace(".csv", "_train_clean.csv")
+    if params.ft_SS:
+        train_history_path = train_history_path.replace(".csv", "_{}.csv".format(params.ft_tau))
+        test_history_path = test_history_path.replace(".csv", "_{}.csv".format(params.ft_tau))
 
     params_path = get_ft_params_path(output_dir)
 
@@ -181,27 +182,12 @@ def main(params):
             if case[idx] == idx : 
                 class_shuffled.remove(case)
                 break 
-
-    if params.layer_diff:
-        pretrained.load_state_dict(state)
-        pretrained.eval()
-        pretrained.cpu() 
-
-        layer_name = []
-        for p in pretrained.named_parameters():
-            layer_name.append(p[0])
-        # 저장할 dataframe
-        df_layer = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
-                                columns=layer_name)
 ########################################################################################################################
     for episode in range(n_episodes):
         # Reset models for each episode
         if params.ft_no_pretrain:
             backbone = get_backbone_class(params.backbone)() 
             body = get_model_class(params.model)(backbone, params)
-            if params.layer_diff:
-                pretrained = copy.deepcopy(body)
-                pretrained.eval()
         else:
             if not torch_pretrained:
                 body.load_state_dict(copy.deepcopy(state))  # note, override model.load_state_dict to change this behavior.
@@ -216,34 +202,13 @@ def main(params):
             opt_params.append({'params': head.parameters()})
         if params.ft_train_body:
             opt_params.append({'params': body.parameters()})
-
-        # Optimizer and Learning Rate Scheduler
-        # select optimizer
-        if params.ft_optimizer == 'SGD':
-            optimizer = torch.optim.SGD(opt_params, lr=params.ft_lr, momentum=0.9, dampening=0.9, weight_decay=0.001)
-        elif params.ft_optimizer == 'Adam':
-            optimizer = torch.optim.Adam(opt_params, lr=params.ft_lr, weight_decay=0.001)
-        elif params.ft_optimizer == 'RMSprop':
-            optimizer = torch.optim.RMSprop(opt_params, lr=params.ft_lr, momentum=0.9, weight_decay=0.001)
-        elif params.ft_optimizer == 'Adagrad':
-            optimizer = torch.optim.Adagrad(opt_params, lr=params.ft_lr, weight_decay=0.001)
-        elif params.ft_optimizer == 'RMSprop_no_momentum':
-            optimizer = torch.optim.RMSprop(opt_params, lr=params.ft_lr, weight_decay=0.001)
-
-        # select learning rate scheduler
-        if params.ft_lr_scheduler == "CosAnneal":
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50) # T_max : 최대 iteration 횟수
-        elif params.ft_lr_scheduler == "CosAnneal_WS":
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=1)
-        elif params.ft_lr_scheduler == "Cycle":
-            scheduler = torch.optim.lr_scheduler.CyclicLR(optimizer, base_lr=0, step_size_up=5, max_lr=0.03, gamma=0.5, mode='exp_range')
-        elif params.ft_lr_scheduler == 'Exp':
-            scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.5)
+        optimizer = torch.optim.SGD(opt_params, lr=params.ft_lr, momentum=0.9, dampening=0.9, weight_decay=0.001)
 
         # Loss function
         criterion = nn.CrossEntropyLoss(label_smoothing=params.ft_label_smoothing).cuda()
-        simclr_criterion = NTXentLoss(temperature=0.5, use_cosine_similarity=True)
-        supcon_criterion = SupConLoss()
+        simclr_criterion = NTXentLoss(temperature=params.ft_tau, use_cosine_similarity=True)
+        supcon_criterion = SupConLoss(temperature=params.ft_tau, base_temperature=params.ft_tau)
+        ft_supcon_criterion = FT_SupConLoss(temperature=params.ft_tau, base_temperature=params.ft_tau)
         #criterion = nn.CrossEntropyLoss().cuda()
         #ewc = ElasticWeightConsolidation(head, criterion, optimizer)
 
@@ -406,7 +371,7 @@ def main(params):
                             x_support_ss_2 = transforms_ss(x_support)
                             z1 = body.forward_features(x_support_ss_1[batch_indices], params.ft_features)
                             z2 = body.forward_features(x_support_ss_2[batch_indices], params.ft_features)
-                            if params.ft_SS == 'supcon':
+                            if params.ft_SS == 'add_supcon':
                                 features = torch.cat([z1.unsqueeze(1), z2.unsqueeze(1)], dim=1)
 
                     if params.ft_manifold_mixup:
@@ -436,8 +401,12 @@ def main(params):
                     if params.ft_SS == "add_simclr":
                         loss_ss = simclr_criterion(z1, z2)
                         loss = loss + loss_ss
-                    elif params.ft_SS == "supcon":
-                        loss = supcon_criterion(features, y_batch)
+                    elif params.ft_SS == "add_supcon":
+                        loss_ss = supcon_criterion(features, y_batch)
+                        loss = loss + loss_ss
+                    elif params.ft_SS == "add_ft_supcon":
+                        loss_ss = supcon_criterion(features, y_batch)
+                        loss = loss + loss_ss
 
                 optimizer.zero_grad() 
                 loss.backward() 
@@ -508,17 +477,17 @@ def main(params):
             test_acc_history.append(test_acc.item())
             train_loss_history.append(train_loss)
 ################################################################################################################
-        if params.save_LP_FT_feat: 
-            pretrained.cuda()
-            with torch.no_grad():
-                lp_feat = pretrained.forward_features(x_query, params.ft_features)
+        # if params.save_LP_FT_feat: 
+        #     pretrained.cuda()
+        #     with torch.no_grad():
+        #         lp_feat = pretrained.forward_features(x_query, params.ft_features)
 
-            feature_path = os.path.join('./feature', params.target_dataset) # NOTE : no augmentation applicable
-            feature_path = os.path.join(feature_path, "{:03d}shot_full".format(s)) 
-            #feature_path = os.path.join(feature_path, 'flip')
-            os.makedirs(feature_path, exist_ok=True)
-            np.save(feature_path+'/lp_{:0.2f}.npy'.format(test_acc*100), lp_feat.cpu().numpy())
-            np.save(feature_path+'/ft_{:0.2f}.npy'.format(test_acc*100), f_query.cpu().numpy())
+        #     feature_path = os.path.join('./feature', params.target_dataset) # NOTE : no augmentation applicable
+        #     feature_path = os.path.join(feature_path, "{:03d}shot_full".format(s)) 
+        #     #feature_path = os.path.join(feature_path, 'flip')
+        #     os.makedirs(feature_path, exist_ok=True)
+        #     np.save(feature_path+'/lp_{:0.2f}.npy'.format(test_acc*100), lp_feat.cpu().numpy())
+        #     np.save(feature_path+'/ft_{:0.2f}.npy'.format(test_acc*100), f_query.cpu().numpy())
 
         # save model every episode
         # torch.save(head.state_dict(), output_dir+'/{}epoch_head.pt'.format(n_epoch))

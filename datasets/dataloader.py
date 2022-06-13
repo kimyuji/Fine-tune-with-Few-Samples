@@ -8,7 +8,7 @@ from torch.utils.data import Dataset
 from datasets.datasets import dataset_class_map
 from datasets.sampler import EpisodicBatchSampler
 from datasets.split import split_dataset
-from datasets.transforms import get_composed_transform
+from datasets.transforms import get_composed_transform, get_tta_transform
 
 _unlabeled_dataset_cache: MutableMapping[Tuple[str, str, int, bool, int], Dataset] = WeakValueDictionary()
 
@@ -32,8 +32,19 @@ class ToSiamese:
     def __call__(self, img):
         return self.transform(img), self.transform2(img)
 
+class TestTimeAugmentation:
+    def __init__(self, transform_list):
+        self.transform_list = transform_list
+
+    def __call__(self, img):
+        self.augmented_imgs = []
+        for transformer in self.transform_list:
+            self.augmented_imgs.append(transformer(img).unsqueeze(2))
+        #self.augmented_imgs = torch.cat(self.augmented_imgs, dim = 2)
+        return self.augmented_imgs
+
 # o
-def get_default_dataset(dataset_name: str, augmentation: str, image_size: int = None, siamese=False):
+def get_default_dataset(dataset_name: str, augmentation: str, image_size: int = None, siamese=False, tta=False):
     """
     :param augmentation: One of {'base', 'strong', None, 'none'}
     """
@@ -49,16 +60,20 @@ def get_default_dataset(dataset_name: str, augmentation: str, image_size: int = 
     transform = get_composed_transform(augmentation, image_size=image_size)
     if siamese:
         transform = ToSiamese(transform)
+    if tta:
+        aug_list = ['TTA_HFlip', 'TTA_VFlip', 'TTA_Rotate', 'TTA_RCrop', 'TTA_GrayScale', 'TTA_CJitter']
+        transform_list = get_tta_transform(aug_list, image_size=image_size)
+        transform = TestTimeAugmentation(transform_list)
     return dataset_cls(transform=transform)
 
 # o
-def get_split_dataset(dataset_name: str, augmentation: str, image_size: int = None, siamese=False,
+def get_split_dataset(dataset_name: str, augmentation: str, image_size: int = None, siamese=False, tta=False,
                       unlabeled_ratio: int = 20, seed=1):
     # If cache details change, just remove the cache – it's not worth the maintenance TBH.
-    cache_key = (dataset_name, augmentation, image_size, siamese, unlabeled_ratio)
+    cache_key = (dataset_name, augmentation, image_size, siamese, tta, unlabeled_ratio)
     if cache_key not in _unlabeled_dataset_cache:
         dataset = get_default_dataset(dataset_name=dataset_name, augmentation=augmentation, image_size=image_size,
-                                      siamese=siamese)
+                                      siamese=siamese, tta=tta)
         unlabeled, labeled = split_dataset(dataset, ratio=unlabeled_ratio, seed=seed)
         
         # Cross-reference so that strong ref persists if either split is currently referenced
@@ -123,8 +138,8 @@ def get_episodic_dataloader(dataset_name: str, n_way: int, n_shot: int, support:
 # o
 def get_labeled_episodic_dataloader(dataset_name: str, n_way: int, n_shot: int, support: bool, n_episodes=600,
                                     n_query_shot=15, n_epochs=1, augmentation: str = None, image_size: int = None,
-                                    unlabeled_ratio: int = 20, num_workers=2, split_seed=1, episode_seed=0):
-    unlabeled, labeled = get_split_dataset(dataset_name, augmentation, image_size=image_size, siamese=False,
+                                    unlabeled_ratio: int = 20, num_workers=2, split_seed=1, episode_seed=0, tta=False):
+    unlabeled, labeled = get_split_dataset(dataset_name, augmentation, image_size=image_size, siamese=False, tta=False,
                                            unlabeled_ratio=unlabeled_ratio, seed=split_seed)
     sampler = EpisodicBatchSampler(labeled, n_way=n_way, n_shot=n_shot, n_query_shot=n_query_shot,
                                    n_episodes=n_episodes, support=support, n_epochs=n_epochs, seed=episode_seed)

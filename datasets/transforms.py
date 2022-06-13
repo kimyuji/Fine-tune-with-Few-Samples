@@ -24,19 +24,37 @@ def parse_transform(transform: str, image_size=224, **transform_kwargs):
              int(image_size)])
     elif transform == 'RandomRotation':
         return transforms.RandomRotation(degrees=10)
-
-    # check out these two! 
-    # elif transform =='RandomHorizontalFlip':
-    #     return transforms.RandomHorizontalFlip(p=1.0)
     elif transform == 'RandomResizedCrop':
         return transforms.RandomResizedCrop(image_size)
     
-    # New!!
-    elif transform == 'RandomAffine':
-        return transforms.RandomRotation(degrees=10)
+    # TTA
+    elif transform == 'TTA_HFlip':
+        return transforms.RandomHorizontalFlip(p=1.0)
+    elif transform == 'TTA_VFlip':
+        return transforms.RandomVerticalFlip(p=1.0)
+    elif transform == 'TTA_Rotate':
+        return transforms.RandomRotation(degrees=60)
+    elif transform == 'TTA_RCrop':
+        return transforms.RandomResizedCrop(image_size, scale = (0.1, 0.9))
+    elif transform == 'TTA_GrayScale':
+        return transforms.Grayscale()
+    elif transform == 'TTA_CJitter':
+        return transforms.RandomApply([transforms.ColorJitter(0.5, 0.5, 0.5, 0.5)], p=1.0)
     else:
         method = getattr(transforms, transform)
         return method(**transform_kwargs)
+
+def get_single_transform(augmentation : str):
+    transform = [augmentation]
+    return transform + ['ToTensor', 'Normalize']
+
+def get_tta_transform(aug_list, image_size=224) -> list: # return list
+    transform_list = []
+    for aug in aug_list:
+        transform_single = get_single_transform(aug)
+        transform_comp = transforms.Compose([parse_transform(x, image_size=image_size) for x in transform_single])
+        transform_list.append(transform_comp)
+    return transform_list
 
 
 def get_composed_transform(augmentation: str = None, image_size=224) -> transforms.Compose: #return 주석
@@ -48,30 +66,25 @@ def get_composed_transform(augmentation: str = None, image_size=224) -> transfor
                           'RandomHorizontalFlip', 'ToTensor', 'Normalize']
     elif augmentation is None or augmentation.lower() == 'none':
         transform_list = ['Resize', 'ToTensor', 'Normalize']
-
-
     # analyze individually
     elif augmentation == 'randomresizedcrop':
         transform_list = ['RandomResizedCrop', 'ToTensor', 'Normalize']
     elif augmentation == 'randomcoloredjitter':
-        transform_list = ['RandomColorJitter', 'ToTensor', 'Normalize', 'Resize']
+        transform_list = ['RandomColorJitter', 'ToTensor', 'Normalize']
     elif augmentation == 'randomhorizontalflip':
-        transform_list = ['RandomHorizontalFlip', 'Resize', 'ToTensor', 'Normalize']
+        transform_list = ['RandomHorizontalFlip', 'ToTensor', 'Normalize']
     elif augmentation == 'randomgrayscale':
-        transform_list = ['RandomGrayscale', 'ToTensor', 'Normalize', 'Resize']
+        transform_list = ['RandomGrayscale', 'ToTensor', 'Normalize']
     elif augmentation == 'randomgaussianblur':
-        transform_list = ['RandomGaussianBlur', 'ToTensor', 'Normalize', 'Resize']
+        transform_list = ['RandomGaussianBlur', 'ToTensor', 'Normalize']
     elif augmentation == 'flipcrop':
-        transform_list = ['RandomResizedCrop', 'RandomHorizontalFlip', 'ToTensor', 'Normalize', 'Resize']
-
+        transform_list = ['RandomResizedCrop', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
     else:
         raise ValueError('Unsupported augmentation: {}'.format(augmentation))
 
     transform_funcs = [parse_transform(x, image_size=image_size) for x in transform_list]
     transform = transforms.Compose(transform_funcs)
     return transform
-
-
 
 
 
@@ -97,3 +110,12 @@ def rand_bbox(size, lam): # size : [B, C, W, H]
     bby2 = np.clip(cy + cut_h // 2, 0, H)
 
     return bbx1, bby1, bbx2, bby2
+
+def transforms_ss(size=224):
+    color_jitter = transforms.ColorJitter(0.8, 0.8, 0.8, 0.2)
+    transform = transforms.Compose([transforms.RandomResizedCrop(size=size),
+                                        transforms.RandomHorizontalFlip(),
+                                        transforms.RandomApply([color_jitter], p=0.8),
+                                        transforms.RandomGrayscale(p=0.2),
+                                        transforms.GaussianBlur(kernel_size=(5,5))])
+    return transform
