@@ -37,7 +37,7 @@ class NTXentLoss(nn.Module):
         else:
             return self._dot_simililarity
 
-    @lru_cache(maxsize=4) # https://www.daleseo.com/python-cache/
+    @lru_cache(maxsize=4) # https://www.daleseo.com/python-cache/ 
     def _get_correlated_mask(self, batch_size):
         diag = np.eye(2 * batch_size)
         l1 = np.eye((2 * batch_size), 2 *

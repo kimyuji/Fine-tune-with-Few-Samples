@@ -34,8 +34,6 @@ def parse_transform(transform: str, image_size=224, **transform_kwargs):
     # New!!
     elif transform == 'RandomAffine':
         return transforms.RandomRotation(degrees=10)
-
-
     else:
         method = getattr(transforms, transform)
         return method(**transform_kwargs)

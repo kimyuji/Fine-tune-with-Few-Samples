@@ -15,6 +15,7 @@ from datasets.transforms import rand_bbox
 from io_utils import parse_args
 from model import get_model_class
 from model.simclr import NTXentLoss
+from model.supcon import SupConLoss
 from model.classifier_head import get_classifier_head_class
 from paths import get_output_directory, get_ft_output_directory, get_ft_train_history_path, get_ft_test_history_path, \
     get_final_pretrain_state_path, get_pretrain_state_path, get_ft_params_path, get_ft_v_score_history_path, \
@@ -22,6 +23,7 @@ from paths import get_output_directory, get_ft_output_directory, get_ft_train_hi
 from utils import *
 import time 
 
+# define SimCLR SS
 size = 224
 color_jitter = transforms.ColorJitter(0.8, 0.8, 0.8, 0.2)
 transforms_ss = transforms.Compose([transforms.RandomResizedCrop(size=size),
@@ -240,7 +242,8 @@ def main(params):
 
         # Loss function
         criterion = nn.CrossEntropyLoss(label_smoothing=params.ft_label_smoothing).cuda()
-        simclr_criterion = NTXentLoss(temperature=1.0, use_cosine_similarity=True)
+        simclr_criterion = NTXentLoss(temperature=0.5, use_cosine_similarity=True)
+        supcon_criterion = SupConLoss()
         #criterion = nn.CrossEntropyLoss().cuda()
         #ewc = ElasticWeightConsolidation(head, criterion, optimizer)
 
@@ -398,11 +401,13 @@ def main(params):
                         f_batch = body.forward_features(x_support_aug[batch_indices], params.ft_features)
                     else:
                         f_batch = body.forward_features(x_support[batch_indices], params.ft_features)
-                        if params.ft_SS == 'add_simclr':
+                        if params.ft_SS:
                             x_support_ss_1 = transforms_ss(x_support)
                             x_support_ss_2 = transforms_ss(x_support)
                             z1 = body.forward_features(x_support_ss_1[batch_indices], params.ft_features)
-                            z2 = body.forward_features(x_support_ss_1[batch_indices], params.ft_features)
+                            z2 = body.forward_features(x_support_ss_2[batch_indices], params.ft_features)
+                            if params.ft_SS == 'supcon':
+                                features = torch.cat([z1.unsqueeze(1), z2.unsqueeze(1)], dim=1)
 
                     if params.ft_manifold_mixup:
                         f_batch_shuffled = body.forward_features(x_support[indices_shuffled[batch_indices]], params.ft_features)
@@ -431,6 +436,8 @@ def main(params):
                     if params.ft_SS == "add_simclr":
                         loss_ss = simclr_criterion(z1, z2)
                         loss = loss + loss_ss
+                    elif params.ft_SS == "supcon":
+                        loss = supcon_criterion(features, y_batch)
 
                 optimizer.zero_grad() 
                 loss.backward() 
