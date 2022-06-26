@@ -67,10 +67,10 @@ def parse_args(mode):
     parser.add_argument('--ft_tag', default='default', type=str, help='Tag used to differentiate output directories for fine-tuned models')
     parser.add_argument('--ft_epochs', default=100, type=int)
     parser.add_argument('--ft_pretrain_epoch', default=None, type=int)
-    parser.add_argument('--ft_batch_size', default=4, type=int) # baseline: 4
-    parser.add_argument('--ft_lr', default=0.01, type=float) # baseline: 0.01
-    parser.add_argument('--ft_optimizer', default='SGD', type=str) # baseline: SGD
-    parser.add_argument('--ft_lr_scheduler', default=None, type=str) # baseline: None
+    parser.add_argument('--ft_batch_size', default=4, type=int) 
+    parser.add_argument('--ft_lr', default=0.01, type=float) 
+    parser.add_argument('--ft_optimizer', default='SGD', type=str) 
+    parser.add_argument('--ft_lr_scheduler', default=None, type=str) 
     
     parser.add_argument('--ft_parts', default='head', type=str, help="Where to fine-tune: {'full', 'body', 'head'}")
     parser.add_argument('--ft_features', default=None, type=str, help='Specify which features to use from the base model (see model/base.py)')
@@ -83,9 +83,9 @@ def parse_args(mode):
     parser.add_argument('--ft_no_pretrain', action='store_true', help="if true, pretrained parts are random initialized")
 
     # augmentation options
-    parser.add_argument('--ft_augmentation', default=None, type=str, help="Augmentation used for fine-tuning {None, 'base', 'strong'}")
+    parser.add_argument('--ft_augmentation', default=None, type=str, help="Augmentation used for fine-tuning {None, 'base', 'strong', 'RandomHorizontalFlip'}")
     parser.add_argument('--ft_manifold_aug', default = None, type = str, help="select version : {'v1', 'v2', 'v3', 'adaptive'}")
-    parser.add_argument('--ft_manifold_mixup', action='store_true', help="manifold mixup of extracted features")
+    parser.add_argument('--ft_manifold_mixup', default=None, type = str, help="version : {same, diff, both, lam}")
     parser.add_argument('--ft_cutmix', default=None, type=str ,help="version : {same, diff, both, lam}")
     parser.add_argument('--ft_mixup', default=None, type=str ,help="version : {same, diff, both, lam}")
     parser.add_argument('--ft_label_smoothing', default=0, type=float)
@@ -99,14 +99,18 @@ def parse_args(mode):
     parser.add_argument('--layer_diff', action='store_true', help='save |pretrain - fine-tuned| each layers')
     parser.add_argument('--save_LP_FT_feat', action='store_true', help='save LP and FT features of query set')
     parser.add_argument('--ft_update_scheduler', default=None, type=str ,help="version : {LP-FT, body-FT, body-LP, LP-body}")
-    parser.add_argument('--TTA_ver', default='mean', type=str, help='version : {mean, }]')
-    parser.add_argument('--ft_SS', default=None, type=str, help='{add_simclr, add_supcon, add_ft_supcon}')
-    parser.add_argument('--ft_tau', default=0.5, type=float, help='Tau for contrastive loss')
-
     parser.add_argument('--save_norm', action='store_true', help='save gradient norm of each layers')
     
     parser.add_argument('--save_succ_fail', default = False, type=bool)
     parser.add_argument('--check_perf', default = False, type=bool)
+
+    # sefl-supervised loss options 
+    parser.add_argument('--ft_SS', default=None, type=str, help='{add_simclr, add_supcon, add_ft_supcon}')
+    parser.add_argument('--ft_tau', default=0.5, type=float, help='Tau for contrastive loss')
+
+    # TTA options
+    parser.add_argument('--TTA_ver', default='test', type=str, help='version : {test, traintest}')
+    
 
     if mode == 'train' or mode == 'pretrain':
         parser.add_argument('--num_classes' , default=200, type=int, help='total number of classes in softmax, only used in baseline') #make it larger than the maximum label value in base class

@@ -25,7 +25,13 @@ def parse_transform(transform: str, image_size=224, **transform_kwargs):
     elif transform == 'RandomRotation':
         return transforms.RandomRotation(degrees=10)
     elif transform == 'RandomResizedCrop':
-        return transforms.RandomResizedCrop(image_size)
+        return transforms.RandomResizedCrop(image_size, scale=(0.5, 0.5), ratio=(0.75, 0.75))
+
+    # Deterministic Augmentation
+    elif transform == 'RandomHorizontalFlip_fixed':
+        return transforms.RandomHorizontalFlip(p=1.0)
+    elif transform == 'RandomResizedCrop_fixed':
+        return transforms.RandomResizedCrop(image_size, scale=(0.5, 0.5), ratio=(0.75, 0.75))
     
     # TTA
     elif transform == 'TTA_HFlip':
@@ -36,20 +42,26 @@ def parse_transform(transform: str, image_size=224, **transform_kwargs):
         return transforms.RandomRotation(degrees=60)
     elif transform == 'TTA_RCrop':
         return transforms.RandomResizedCrop(image_size, scale = (0.1, 0.9))
-    elif transform == 'TTA_GrayScale':
-        return transforms.Grayscale()
+    # elif transform == 'TTA_GrayScale': # channel=1이 돼서 못씀
+    #     return transforms.Grayscale()
     elif transform == 'TTA_CJitter':
         return transforms.RandomApply([transforms.ColorJitter(0.5, 0.5, 0.5, 0.5)], p=1.0)
+    elif transform == '':
+        return
     else:
         method = getattr(transforms, transform)
         return method(**transform_kwargs)
 
 def get_single_transform(augmentation : str):
     transform = [augmentation]
-    return transform + ['ToTensor', 'Normalize']
+    return transform + ['Resize', 'ToTensor', 'Normalize']
 
 def get_tta_transform(aug_list, image_size=224) -> list: # return list
     transform_list = []
+    # first, add original 
+    original_transform = ['Resize', 'ToTensor', 'Normalize']
+    transform_comp = transforms.Compose([parse_transform(x, image_size=image_size) for x in original_transform])
+    transform_list.append(transform_comp)
     for aug in aug_list:
         transform_single = get_single_transform(aug)
         transform_comp = transforms.Compose([parse_transform(x, image_size=image_size) for x in transform_single])
@@ -65,20 +77,24 @@ def get_composed_transform(augmentation: str = None, image_size=224) -> transfor
         transform_list = ['RandomResizedCrop', 'RandomColorJitter', 'RandomGrayscale', 'RandomGaussianBlur',
                           'RandomHorizontalFlip', 'ToTensor', 'Normalize']
     elif augmentation is None or augmentation.lower() == 'none':
-        transform_list = ['Resize', 'ToTensor', 'Normalize']
+        transform_list = ['Resize', 'ToTensor', 'Normalize'] # Resize필수!TT
     # analyze individually
     elif augmentation == 'randomresizedcrop':
         transform_list = ['RandomResizedCrop', 'ToTensor', 'Normalize']
     elif augmentation == 'randomcoloredjitter':
-        transform_list = ['RandomColorJitter', 'ToTensor', 'Normalize']
+        transform_list = ['RandomColorJitter', 'Resize', 'ToTensor', 'Normalize']
     elif augmentation == 'randomhorizontalflip':
-        transform_list = ['RandomHorizontalFlip', 'ToTensor', 'Normalize']
+        transform_list = ['RandomHorizontalFlip', 'Resize', 'ToTensor', 'Normalize']
     elif augmentation == 'randomgrayscale':
-        transform_list = ['RandomGrayscale', 'ToTensor', 'Normalize']
+        transform_list = ['RandomGrayscale', 'Resize', 'ToTensor', 'Normalize']
     elif augmentation == 'randomgaussianblur':
-        transform_list = ['RandomGaussianBlur', 'ToTensor', 'Normalize']
+        transform_list = ['RandomGaussianBlur', 'Resize', 'ToTensor', 'Normalize']
     elif augmentation == 'flipcrop':
         transform_list = ['RandomResizedCrop', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
+    elif augmentation == 'randomresizedcrop_fixed':
+        transform_list = ['RandomResizedCrop_fixed', 'ToTensor', 'Normalize']
+    elif augmentation == 'randomhorizontalflip_fixed':
+        transform_list = ['RandomHorizontalFlip_fixed', 'Resize', 'ToTensor', 'Normalize']
     else:
         raise ValueError('Unsupported augmentation: {}'.format(augmentation))
 

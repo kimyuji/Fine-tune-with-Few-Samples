@@ -14,7 +14,7 @@ _unlabeled_dataset_cache: MutableMapping[Tuple[str, str, int, bool, int], Datase
 
 DEFAULT_IMAGE_SIZE = 224
 
-
+### for SSL
 class ToSiamese:
     """
     A wrapper for torchvision transform. The transform is applied twice for
@@ -32,16 +32,19 @@ class ToSiamese:
     def __call__(self, img):
         return self.transform(img), self.transform2(img)
 
+### for TTA
 class TestTimeAugmentation:
+
     def __init__(self, transform_list):
         self.transform_list = transform_list
-
     def __call__(self, img):
         self.augmented_imgs = []
         for transformer in self.transform_list:
-            self.augmented_imgs.append(transformer(img).unsqueeze(2))
-        #self.augmented_imgs = torch.cat(self.augmented_imgs, dim = 2)
-        return self.augmented_imgs
+            self.augmented_imgs.append(transformer(img).unsqueeze(3))
+
+        self.augmented_imgs = torch.cat(self.augmented_imgs, dim = 3)
+        
+        return self.augmented_imgs # return as list
 
 # o
 def get_default_dataset(dataset_name: str, augmentation: str, image_size: int = None, siamese=False, tta=False):
@@ -57,13 +60,16 @@ def get_default_dataset(dataset_name: str, augmentation: str, image_size: int = 
     except KeyError as e: 
         raise ValueError('Unsupported dataset: {}'.format(dataset_name)) 
 
-    transform = get_composed_transform(augmentation, image_size=image_size)
-    if siamese:
-        transform = ToSiamese(transform)
+    # transform configuration (tta, siamse)
     if tta:
-        aug_list = ['TTA_HFlip', 'TTA_VFlip', 'TTA_Rotate', 'TTA_RCrop', 'TTA_GrayScale', 'TTA_CJitter']
-        transform_list = get_tta_transform(aug_list, image_size=image_size)
+        aug_list = ['TTA_HFlip', 'TTA_RCrop', 'TTA_CJitter']
+        transform_list = get_tta_transform(aug_list, image_size = image_size)
         transform = TestTimeAugmentation(transform_list)
+    else :
+        transform = get_composed_transform(augmentation)
+        if siamese:
+            transform = ToSiamese(transform)
+
     return dataset_cls(transform=transform)
 
 # o
@@ -139,8 +145,11 @@ def get_episodic_dataloader(dataset_name: str, n_way: int, n_shot: int, support:
 def get_labeled_episodic_dataloader(dataset_name: str, n_way: int, n_shot: int, support: bool, n_episodes=600,
                                     n_query_shot=15, n_epochs=1, augmentation: str = None, image_size: int = None,
                                     unlabeled_ratio: int = 20, num_workers=2, split_seed=1, episode_seed=0, tta=False):
-    unlabeled, labeled = get_split_dataset(dataset_name, augmentation, image_size=image_size, siamese=False, tta=False,
+    # dataset
+    unlabeled, labeled = get_split_dataset(dataset_name, augmentation, image_size=image_size, siamese=False, tta=tta,
                                            unlabeled_ratio=unlabeled_ratio, seed=split_seed)
+    # sampler
     sampler = EpisodicBatchSampler(labeled, n_way=n_way, n_shot=n_shot, n_query_shot=n_query_shot,
                                    n_episodes=n_episodes, support=support, n_epochs=n_epochs, seed=episode_seed)
+
     return torch.utils.data.DataLoader(labeled, num_workers=num_workers, batch_sampler=sampler)

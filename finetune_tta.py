@@ -58,6 +58,7 @@ def main(params):
     q = params.n_query_shot
     # Whether to optimize for fixed features (when there is no augmentation and only head is updated)
     use_fixed_features = params.ft_augmentation is None and params.ft_parts == 'head'
+    # 어차피 TTA 하면 Head는 쓸일 없을거같은데
 
     # Model
     backbone = get_backbone_class(params.backbone)() 
@@ -84,7 +85,7 @@ def main(params):
                                                    num_workers=params.num_workers,
                                                    split_seed=params.split_seed,
                                                    episode_seed=params.ft_episode_seed,
-                                                   #tta=True
+                                                   tta=True # TTA for query
                                                    )
     if (params.ft_clean_test or params.ft_train_with_clean) and not use_fixed_features: # full 
         support_loader_clean = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=True,
@@ -113,6 +114,7 @@ def main(params):
     if params.ft_train_with_clean:
         train_history_path = train_history_path.replace(".csv", "_train_clean.csv")
         test_history_path = test_history_path.replace(".csv", "_train_clean.csv")
+    train_history_path = train_history_path.replace(".csv", "_TTA.csv")
     test_history_path = test_history_path.replace(".csv", "_TTA.csv")
     params_path = get_ft_params_path(output_dir)
 
@@ -203,7 +205,8 @@ def main(params):
         y_support = torch.arange(w).repeat_interleave(s).cuda() # 각 요소를 반복 [000001111122222....]
         cluster_y_support = y_support.cpu().numpy()
 
-        x_query = next(query_iterator)[0].cuda()
+        x_query_list = next(query_iterator)[0]
+        x_query = x_query_list[0].cuda()
         f_query = None
         y_query = torch.arange(w).repeat_interleave(q).cuda() 
         cluster_y_query = y_query.cpu().numpy()
@@ -212,7 +215,6 @@ def main(params):
         test_acc_history = []
         train_loss_history = []
         train_acc_clean_history = []
-        train_grad_history = []
         support_v_score = []
         query_v_score = []
 
@@ -410,27 +412,15 @@ def main(params):
             if epoch == n_epoch - 1:
                 with torch.no_grad():
                     p_query_tta  = []
-                    for transformer in transformers: # custom transforms or e.g. tta.aliases.d4_transform() 
-                        # augment image
-                        x_query_augmented = transformer.augment_image(x_query)
-                        
+                    for aug_x_query in x_query_list:
+                        aug_x_query = aug_x_query.cuda()
                         # pass to model
-                        f_query = body.forward_features(x_query_augmented, params.ft_features)
+                        f_query = body.forward_features(aug_x_query, params.ft_features)
                         p_query = head(f_query) 
-                        
-                    #     # reverse augmentation for mask and label
-                    #     deaug_mask = transformer.deaugment_mask(p_query['mask'])
-                    #     deaug_label = transformer.deaugment_label(p_query['label'])
-                        
-                    #     # save results
-                    #     labels.append(deaug_mask)
-                    #     masks.append(deaug_label)
                         p_query_tta.append(p_query.unsqueeze(2))
                         
-                    # # reduce results as you want, e.g mean/max/min
                     p_query_tta = torch.concat(p_query_tta, axis=2)
                     p_query_tta_mean = torch.mean(p_query_tta, dim = 2)
-                    # mask = np.mean(masks)
 
                 test_acc = torch.eq(y_query, p_query_tta_mean.argmax(dim=1)).sum() / (w * q)
                 # V-measure query
