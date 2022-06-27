@@ -481,13 +481,13 @@ def main(params):
         # torch.save(head.state_dict(), output_dir+'/{}epoch_head.pt'.format(n_epoch))
         # torch.save(body.state_dict(), output_dir+'/{}epoch_body.pt'.format(n_epoch))
 
-        #print("Total iterations for {} epochs : {}".format(n_epoch, n_iter))
-        # df_train.loc[episode + 1] = train_acc_history
-        # df_train.to_csv(train_history_path)
-        # df_test.loc[episode + 1] = test_acc_history
-        # df_test.to_csv(test_history_path)
-        # df_loss.loc[episode + 1] = train_loss_history
-        # df_loss.to_csv(loss_history_path)
+        print("Total iterations for {} epochs : {}".format(n_epoch, n_iter))
+        df_train.loc[episode + 1] = train_acc_history
+        df_train.to_csv(train_history_path)
+        df_test.loc[episode + 1] = test_acc_history
+        df_test.to_csv(test_history_path)
+        df_loss.loc[episode + 1] = train_loss_history
+        df_loss.to_csv(loss_history_path)
 
         if params.v_score:
             if params.n_shot != 1:

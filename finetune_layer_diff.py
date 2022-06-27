@@ -472,7 +472,7 @@ def main(params):
     #print(fmt.format(df_test.mean()[-1] * 100, 1.96 * df_test.std()[-1] / np.sqrt(n_episodes) * 100))
 
 
-    print('Saveing layer difference ...')
+    print('Saving layer difference ...')
     df_layer_l2.to_csv(layer_path_l2)
     df_layer_sub.to_csv(layer_path_sub)
 
