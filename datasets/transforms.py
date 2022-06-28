@@ -68,6 +68,14 @@ def get_tta_transform(aug_list, image_size=224) -> list: # return list
         transform_list.append(transform_comp)
     return transform_list
 
+def get_valid_transform(aug_list, image_size=224) -> list: # return list
+    transform_list = []
+    for aug in aug_list:
+        transform_single = get_single_transform(aug)
+        transform_comp = transforms.Compose([parse_transform(x, image_size=image_size) for x in transform_single])
+        transform_list.append(transform_comp)
+    return transform_list
+
 
 def get_composed_transform(augmentation: str = None, image_size=224) -> transforms.Compose: #return 주석
     if augmentation == 'base':

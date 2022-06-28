@@ -10,7 +10,7 @@ _model_class_map = {
     'byol': BYOL,
     'moco': MoCo,
     'simsiam': SimSiam,
-}
+    }
 
 
 def get_model_class(key):

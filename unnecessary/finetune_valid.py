@@ -18,7 +18,7 @@ from model.simclr import NTXentLoss
 from model.supcon import SupConLoss
 from model.supcon import FT_SupConLoss
 from model.classifier_head import get_classifier_head_class
-from paths import get_output_directory, get_ft_output_directory, get_ft_train_history_path, get_ft_test_history_path, \
+from paths import get_output_directory, get_ft_output_directory, get_ft_train_history_path, get_ft_test_history_path, get_ft_valid_history_path, \
     get_final_pretrain_state_path, get_pretrain_state_path, get_ft_params_path, get_ft_v_score_history_path, \
     get_ft_loss_history_path, get_ft_clean_history_path
 from utils import *
@@ -92,7 +92,7 @@ def main(params):
                                                    num_workers=params.num_workers,
                                                    split_seed=params.split_seed,
                                                    episode_seed=params.ft_episode_seed)
-    if (params.ft_clean_test or params.ft_train_with_clean) and not use_fixed_features: # full 
+    if (params.ft_valid_acc=='clean' or params.ft_train_with_clean) and not use_fixed_features: # full 
         support_loader_clean = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=True,
                                                      n_query_shot=q, n_episodes=n_episodes, n_epochs=support_epochs,
                                                      augmentation=None,
@@ -100,6 +100,17 @@ def main(params):
                                                      num_workers=params.num_workers,
                                                      split_seed=params.split_seed, episode_seed=params.ft_episode_seed)
         support_iterator_clean = iter(support_loader_clean)
+    if params.ft_valid_acc == 'aug':
+        valid_loader = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=True,
+                                                     n_query_shot=q, n_episodes=n_episodes, n_epochs=support_epochs,
+                                                     augmentation=params.ft_augmentation,
+                                                     unlabeled_ratio=params.unlabeled_ratio,
+                                                     num_workers=params.num_workers,
+                                                     split_seed=params.split_seed, episode_seed=params.ft_episode_seed,
+                                                     valid=params.ft_valid_acc)
+        valid_iterator = iter(valid_loader)
+        x_valid_list = next(valid_iterator)[0]
+
     #print("dddd")
     # 값이 맞게끔 보증! 
     assert (len(query_loader) == n_episodes)
@@ -113,8 +124,7 @@ def main(params):
     train_history_path = get_ft_train_history_path(output_dir)
     test_history_path = get_ft_test_history_path(output_dir)
     loss_history_path = get_ft_loss_history_path(output_dir)
-    train_clean_history_path = get_ft_clean_history_path(output_dir)
-    support_v_score_history_path, query_v_score_history_path = get_ft_v_score_history_path(output_dir)
+    valid_history_path = get_ft_valid_history_path(output_dir)
 
     if params.ft_train_with_clean:
         train_history_path = train_history_path.replace(".csv", "_train_clean.csv")
@@ -135,16 +145,10 @@ def main(params):
                             columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
     df_test = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
                            columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
-    df_train_clean = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
-                           columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
     df_loss = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
                            columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
-    # df_grad = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
-    #                        columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
-    df_v_score_support = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
-                            columns=['epoch{}'.format(e+1) for e in range(n_epoch)])
-    df_v_score_query = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
-                           columns=['epoch{}'.format(e) for e in range(n_epoch+1)])
+    df_valid = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
+                           columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
 
     # Pre-train state
     
@@ -206,49 +210,31 @@ def main(params):
         simclr_criterion = NTXentLoss(temperature=params.ft_tau, use_cosine_similarity=True)
         supcon_criterion = SupConLoss(temperature=params.ft_tau, base_temperature=params.ft_tau)
         ft_supcon_criterion = FT_SupConLoss(temperature=params.ft_tau, base_temperature=params.ft_tau)
-        #criterion = nn.CrossEntropyLoss().cuda()
-        #ewc = ElasticWeightConsolidation(head, criterion, optimizer)
 
         x_support = None
         f_support = None
         y_support = torch.arange(w).repeat_interleave(s).cuda() # 각 요소를 반복 [000001111122222....]
-        cluster_y_support = y_support.cpu().numpy()
 
         x_query = next(query_iterator)[0].cuda()
         f_query = None
         y_query = torch.arange(w).repeat_interleave(q).cuda() 
-        cluster_y_query = y_query.cpu().numpy()
-        
+                
         train_acc_history = []
         test_acc_history = []
         train_loss_history = []
-        train_acc_clean_history = []
-        train_grad_history = []
-        support_v_score = []
-        query_v_score = []
+        valid_acc_history = []
 
         if use_fixed_features:  # load data and extract features once per episode
             with torch.no_grad():
                 x_support, _ = next(support_iterator)
                 x_support = x_support.cuda()
 
-                if torch_pretrained:
-                    f_support = backbone(x_support)
-                    f_query = backbone(x_query)
-                else:
-                    f_support = body.forward_features(x_support, params.ft_features)
-                    f_query = body.forward_features(x_query, params.ft_features)
-
-                    if params.ft_clean_test: # no aug, head
-                        f_support_clean = copy.deepcopy(f_support)
+                f_support = body_forward(x_support, body, backbone, torch_pretrained, params)
+                f_query = body_forward(x_query, body, backbone, torch_pretrained, params)
         else:
             # V-measure query for epoch0, augmentation and full
             with torch.no_grad():
-                f_query = body.forward_features(x_query, params.ft_features)
-                f_query_0 = f_query.cpu().numpy()
-                kmeans = KMeans(n_clusters = w)
-                cluster_pred = kmeans.fit(f_query_0).labels_
-                query_v_score.append(v_measure_score(cluster_pred, cluster_y_query))
+                f_query = body_forward(x_query, body, backbone, torch_pretrained, params)
 
 
 #############################################################################################################
@@ -287,7 +273,7 @@ def main(params):
             if not use_fixed_features:  
                 x_support, _ = next(support_iterator)
                 x_support = x_support.cuda() 
-                if params.ft_clean_test or params.ft_train_with_clean:
+                if params.ft_valid_acc == 'clean' or params.ft_train_with_clean:
                     x_support_clean, _ = next(support_iterator_clean)
                     x_support_clean = x_support_clean.cuda()
 
@@ -344,9 +330,9 @@ def main(params):
                     if use_fixed_features:
                         with torch.no_grad():
                             if torch_pretrained:
-                                f_support = backbone(x_support_aug)
+                                f_support = backbone(x_support_aug).squeeze(-1).squeeze(-1)
                             else:
-                                f_support = body.forward_features(x_support_aug, params.ft_features)
+                                f_support = body_forward(x_support_aug, body, backbone, torch_pretrained, params)
 
 ################################################################################################################
             # iteration 25/bs(5shot) or 5/bs(1shot)
@@ -364,27 +350,22 @@ def main(params):
                     f_batch = f_support[batch_indices]
                 else: # full update
                     if aug_bool:   
-                        f_batch = body.forward_features(x_support_aug[batch_indices], params.ft_features)
+                        f_batch = body_forward(x_support_aug[batch_indices], body, backbone, torch_pretrained, params)
                     else:
-                        f_batch = body.forward_features(x_support[batch_indices], params.ft_features)
+                        f_batch = body_forward(x_support[batch_indices], body, backbone, torch_pretrained, params)
 
                     if params.ft_manifold_mixup:
-                        f_batch_shuffled = body.forward_features(x_support[indices_shuffled[batch_indices]], params.ft_features)
-                        f_batch = lam * f_batch[:,:] + (1. - lam) * f_batch_shuffled[:,:]
-                        
-                        f_batch_shuffled = body.forward_features(x_support[indices_shuffled[batch_indices]], params.ft_features)
+                        f_batch_shuffled = body_forward(x_support[indices_shuffled[batch_indices]], body, backbone, torch_pretrained, params)
                         f_batch = lam * f_batch[:,:] + (1. - lam) * f_batch_shuffled[:,:]
 
                     if params.ft_train_with_clean:
-                        f_batch_clean = body.forward_features(x_support_clean[batch_indices], params.ft_features)
+                        f_batch_clean = body_forward(x_support_clean[batch_indices], body, backbone, torch_pretrained, params)
                         f_batch = torch.cat([f_batch,f_batch_clean])
 
                         if aug_bool and mix_bool:
                             y_shuffled_batch = torch.cat([y_shuffled_batch, y_batch])
                         y_batch = torch.cat([y_batch,y_batch])
             
-                # if torch_pretrained:
-                #     f_batch = f_batch.squeeze(2).squeeze(2)
                 
                 # head 거치기
                 pred = head(f_batch)
@@ -402,9 +383,6 @@ def main(params):
 
                 total_loss += loss.item()
 
-                # if params.ft_lr_scheduler:
-                #     scheduler.step()
-
 ################################################################################################################
             train_loss = total_loss / support_batches
             train_acc = correct / n_data
@@ -415,44 +393,39 @@ def main(params):
             body.eval()
             head.eval()
 
-            # Test Using Clean Support
-            if params.ft_clean_test:
-                with torch.no_grad():
-                    if params.ft_parts == 'head':
-                        pred_clean = head(f_support_clean)
-                    elif params.ft_parts != 'head':
-                        f_support_clean = body.forward_features(x_support_clean, params.ft_features)
-                        pred_clean = head(f_support_clean)
-                train_acc_clean = torch.eq(y_support, pred_clean.argmax(dim=1)).sum() / n_data
-                train_acc_clean_history.append(train_acc_clean.item())
-            
-            # V-measure support
-            if params.v_score and params.n_shot != 1:
-                with torch.no_grad():
-                    f_support = body.forward_features(x_support, params.ft_features)
-                f_support = f_support.cpu().numpy()
-                kmeans = KMeans(n_clusters = w)
-                cluster_pred = kmeans.fit(f_support).labels_
-                support_v_score.append(v_measure_score(cluster_pred, cluster_y_support))
+            # Validation
+            if params.ft_valid_acc:
+                if params.ft_valid_acc == 'clean':
+                    with torch.no_grad():
+                        f_support_clean = body_forward(x_support_clean, body, backbone, torch_pretrained, params)
+                        p_valid = head(f_support_clean)
+                    y_valid = y_support
+                elif params.ft_valid_acc == 'aug': # valid on augmented data
 
+                    with torch.no_grad():
+                        x_valid = x_valid_list.reshape(-1, 3, 224, 224)
+                        num_valid = x_valid.shape[0]
+                        x_valid  = x_valid.cuda()
+                        f_valid = body_forward(x_valid, body, backbone, torch_pretrained, params)
+                        p_valid = head(f_valid)
+                    y_valid = torch.arange(w).repeat_interleave(int(num_valid/5)).cuda()
+                
+                #save_img(x_valid, valid_history_path.replace('csv', 'pickle'))
+                pred_valid = p_valid.argmax(dim=1)
+                valid_acc = torch.eq(y_valid, pred_valid).sum() / num_valid
+                valid_acc_history.append(valid_acc.item())
 
             # Test Using Query
             if params.ft_intermediate_test or epoch == n_epoch - 1:
                 with torch.no_grad():
                     if not use_fixed_features:
                         if not torch_pretrained:
-                            f_query = body.forward_features(x_query, params.ft_features)
+                            f_query = body_forward(x_query, body, backbone, torch_pretrained, params)
                         else:
-                            f_query = backbone(x_query)
+                            f_query = backbone(x_query).squeeze(-1).squeeze(-1)
                             f_query = f_query.squeeze(-1).squeeze(-1)
                     p_query = head(f_query) 
                 test_acc = torch.eq(y_query, p_query.argmax(dim=1)).sum() / (w * q)
-                # V-measure query
-                if params.v_score:
-                    f_query = f_query.cpu().numpy()
-                    kmeans = KMeans(n_clusters = w)
-                    cluster_pred = kmeans.fit(f_query).labels_
-                    query_v_score.append(v_measure_score(cluster_pred, cluster_y_query))
             else:
                 test_acc = torch.tensor(0)
             
@@ -465,41 +438,19 @@ def main(params):
             test_acc_history.append(test_acc.item())
             train_loss_history.append(train_loss)
 ################################################################################################################
-        # if params.save_LP_FT_feat: 
-        #     pretrained.cuda()
-        #     with torch.no_grad():
-        #         lp_feat = pretrained.forward_features(x_query, params.ft_features)
-
-        #     feature_path = os.path.join('./feature', params.target_dataset) # NOTE : no augmentation applicable
-        #     feature_path = os.path.join(feature_path, "{:03d}shot_full".format(s)) 
-        #     #feature_path = os.path.join(feature_path, 'flip')
-        #     os.makedirs(feature_path, exist_ok=True)
-        #     np.save(feature_path+'/lp_{:0.2f}.npy'.format(test_acc*100), lp_feat.cpu().numpy())
-        #     np.save(feature_path+'/ft_{:0.2f}.npy'.format(test_acc*100), f_query.cpu().numpy())
-
-        # save model every episode
-        # torch.save(head.state_dict(), output_dir+'/{}epoch_head.pt'.format(n_epoch))
-        # torch.save(body.state_dict(), output_dir+'/{}epoch_body.pt'.format(n_epoch))
-
-        print("Total iterations for {} epochs : {}".format(n_epoch, n_iter))
         df_train.loc[episode + 1] = train_acc_history
         df_train.to_csv(train_history_path)
         df_test.loc[episode + 1] = test_acc_history
         df_test.to_csv(test_history_path)
         df_loss.loc[episode + 1] = train_loss_history
         df_loss.to_csv(loss_history_path)
+        df_valid.loc[episode + 1] = valid_acc_history
+        df_valid.to_csv(valid_history_path)
 
-        if params.v_score:
-            if params.n_shot != 1:
-                df_v_score_support.loc[episode + 1] = support_v_score
-                df_v_score_support.to_csv(support_v_score_history_path)
-            df_v_score_query.loc[episode + 1] = query_v_score
-            df_v_score_query.to_csv(query_v_score_history_path)
-
-        if params.ft_clean_test:
-            df_train_clean.loc[episode + 1] = train_acc_clean_history
-            fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} clean_acc={:6.2f} test_acc={:6.2f}'
-            print(fmt.format(episode, train_loss, train_acc_history[-1] * 100, train_acc_clean_history[-1] * 100, test_acc_history[-1] * 100))
+        if params.ft_valid_acc:
+            df_valid.loc[episode + 1] = valid_acc_history
+            fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} valid_acc={:6.2f} test_acc={:6.2f}'
+            print(fmt.format(episode, train_loss, train_acc_history[-1] * 100, valid_acc_history[-1] * 100, test_acc_history[-1] * 100))
         else: 
             fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_acc={:6.2f}'
             print(fmt.format(episode, train_loss, train_acc_history[-1] * 100, test_acc_history[-1] * 100))
@@ -515,9 +466,9 @@ def main(params):
     df_train.to_csv(train_history_path)
     df_test.to_csv(test_history_path)
     df_loss.to_csv(loss_history_path)
-    if params.ft_clean_test:
-        df_train_clean.to_csv(train_clean_history_path)
-    print("\nIt took {:6.2f} to finish current training\n".format((end-start)/60))
+    if params.ft_valid_acc:
+        df_valid.to_csv(valid_history_path)
+    print("\nIt took {:6.2f} min to finish current training\n".format((end-start)/60))
 
 
 if __name__ == '__main__':

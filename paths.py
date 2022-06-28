@@ -203,6 +203,9 @@ def get_ft_train_history_path(output_directory):
 def get_ft_test_history_path(output_directory):
     return os.path.join(output_directory, 'test_history.csv')
 
+def get_ft_valid_history_path(output_directory):
+    return os.path.join(output_directory, 'valid_history.csv')
+
 def get_ft_loss_history_path(output_directory):
     return os.path.join(output_directory, 'loss_history.csv')
 

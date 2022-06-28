@@ -229,15 +229,11 @@ def main(params):
                 x_support, _ = next(support_iterator)
                 x_support = x_support.cuda()
 
-                if torch_pretrained:
-                    f_support = backbone(x_support)
-                    f_query = backbone(x_query)
-                else:
-                    f_support = body.forward_features(x_support, params.ft_features)
-                    f_query = body.forward_features(x_query, params.ft_features)
+                f_support = body_forward(x_support, body, backbone, torch_pretrained, params)
+                f_query = body_forward(x_query, body, backbone, torch_pretrained, params)
 
-                    if params.ft_clean_test: # no aug, head
-                        f_support_clean = copy.deepcopy(f_support)
+                if params.ft_clean_test: # no aug, head
+                    f_support_clean = copy.deepcopy(f_support)
 
         train_acc_history = []
         test_acc_history = []
@@ -266,7 +262,7 @@ def main(params):
                     x_support_clean, _ = next(support_iterator_clean)
                     x_support_clean = x_support_clean.cuda()
                     if params.ft_augmentation:
-                        f_support_clean = body.forward_features(x_support_clean, params.ft_features)
+                        f_support_clean = body_forward(x_support_clean, body, backbone, torch_pretrained, params)
 
 
             total_loss = 0
@@ -314,10 +310,7 @@ def main(params):
                     y_shuffled = y_support[indices_shuffled] 
 
                     with torch.no_grad():
-                        if torch_pretrained:
-                            f_support = backbone(x_support_aug)
-                        else:
-                            f_support = body.forward_features(x_support_aug, params.ft_features)
+                        f_support = body_forward(x_support_aug, body, backbone, torch_pretrained, params)
 
 ################################################################################################################
             # iteration 25/bs(5shot) or 5/bs(1shot)
@@ -334,13 +327,11 @@ def main(params):
                     f_batch = f_support[batch_indices]
                 else: # if use augmentation or update body
                     if aug_bool:   
-                        f_batch = body.forward_features(x_support_aug[batch_indices], params.ft_features)
+                        f_batch = body_forward(x_support_aug[batch_indices], body, backbone, torch_pretrained, params)
                     else:
-                        f_batch = body.forward_features(x_support[batch_indices], params.ft_features)
+                        f_batch = body_forward(x_support[batch_indices], body, backbone, torch_pretrained, params)
                     if params.ft_manifold_mixup:
-                        f_batch_shuffled = body.forward_features(x_support[indices_shuffled[batch_indices]], params.ft_features)
-                if torch_pretrained:
-                    f_batch = f_batch.squeeze(2).squeeze(2)
+                        f_batch_shuffled = body_forward(x_support[indices_shuffled[batch_indices]], body, backbone, torch_pretrained, params)
 
                 if params.ft_manifold_mixup:
                     f_batch = lam * f_batch[:,:] + (1. - lam) * f_batch_shuffled[:,:]
@@ -381,7 +372,7 @@ def main(params):
                     if params.ft_parts == 'head':
                         pred_clean = head(f_support_clean)
                     elif params.ft_parts != 'head':
-                        f_support_clean = body.forward_features(x_support_clean, params.ft_features)
+                        f_support_clean = body_forward(x_support_clean, body, backbone, torch_pretrained, params)
                         pred_clean = head(f_support_clean)
                 train_acc_clean = torch.eq(y_support, pred_clean.argmax(dim=1)).sum() / n_data
                 train_acc_clean_history.append(train_acc_clean.item())
@@ -389,7 +380,7 @@ def main(params):
             # Calculate V measurement score
             if params.v_score and params.n_shot != 1:
                 with torch.no_grad():
-                    f_support = body.forward_features(x_support, params.ft_features)
+                    f_support = body_forward(x_support, body, backbone, torch_pretrained, params)
                 f_support = f_support.cpu().numpy()
                 cluster_label = y_support.cpu().numpy()
                 kmeans = KMeans(n_clusters = w)
@@ -401,11 +392,7 @@ def main(params):
             if epoch == n_epoch - 1:
                 with torch.no_grad():
                     if not use_fixed_features:
-                        if not torch_pretrained:
-                            f_query = body.forward_features(x_query, params.ft_features)
-                        else:
-                            f_query = backbone(x_query)
-                            f_query = f_query.squeeze(-1).squeeze(-1)
+                        f_query = body_forward(x_query, body, backbone, torch_pretrained, params)
                     p_query = head(f_query) 
                 test_acc = torch.eq(y_query, p_query.argmax(dim=1)).sum() / (w * q)
                 if params.v_score:
@@ -458,10 +445,6 @@ def main(params):
             layer_diff_sub.append((np.abs(lp_head-ft_head) / np.abs(lp_head)).mean())
         df_layer_l2.loc[episode+1] = layer_diff_l2
         df_layer_sub.loc[episode+1] = layer_diff_sub
-
-        # save model every episode
-        # torch.save(head.state_dict(), output_dir+'/{}epoch_head.pt'.format(n_epoch))
-        # torch.save(body.state_dict(), output_dir+'/{}epoch_body.pt'.format(n_epoch))
 
         #print("Total iterations for {} epochs : {}".format(n_epoch, n_iter))
         fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_acc={:6.2f}'

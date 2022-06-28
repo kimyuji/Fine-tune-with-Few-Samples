@@ -74,11 +74,12 @@ def parse_args(mode):
     
     parser.add_argument('--ft_parts', default='head', type=str, help="Where to fine-tune: {'full', 'body', 'head'}")
     parser.add_argument('--ft_features', default=None, type=str, help='Specify which features to use from the base model (see model/base.py)')
+    parser.add_argument('--ft_save_valid', action='store_true')
     parser.add_argument('--ft_intermediate_test', action='store_true', help='Evaluate on query set during fine-tuning')
     parser.add_argument('--ft_episode_seed', default=0, type=int)
 
     # option for training
-    parser.add_argument('--ft_clean_test', action='store_true', help ='Test on nonaugmented samples every epoch')
+    parser.add_argument('--ft_valid_acc', default = None, type=str, help ='{clean, aug}')
     parser.add_argument('--ft_train_with_clean', action='store_true', help="{This option is only available on full update with augmentation used} train augmented imgs with original imgs")
     parser.add_argument('--ft_no_pretrain', action='store_true', help="if true, pretrained parts are random initialized")
 
@@ -180,6 +181,8 @@ def parse_args(mode):
         raise AssertionError('finetune parts should be either body or full in ordr to calculate vscore')
     if (params.ft_SS and params.ft_augmentation) or (params.ft_SS and params.ft_mixup) or (params.ft_SS and params.ft_cutmix) or (params.ft_SS and params.ft_manifold_mixup):
         raise AssertionError('You cant use any augmentation in self-supervised learning')
+    if (params.v_score and not params.ft_intermediate_test) or (params.ft_valid_acc and not params.ft_intermediate_test):
+        raise AssertionError('You shoud use intermediate testing and v_score/ft_valid_acc at the same time')
 
     # Assign num_classes
     if params.dataset == 'miniImageNet':

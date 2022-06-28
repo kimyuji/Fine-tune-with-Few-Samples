@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import pickle
 
 def adjust_learning_rate(optimizer, epoch, lr=0.01, step1=30, step2=60, step3=90):
     """Sets the learning rate to the initial LR decayed by 10 every X epochs"""
@@ -45,7 +46,18 @@ def sparsity(cl_data_file):
 
 
 
-# def 
+def save_img(imgs, path):
+    with open(path, 'wb') as f :
+        pickle.dump(imgs, f)
+    pass
+
+
+def body_forward(input, body, backbone, torch_pretrained, params):
+    if torch_pretrained : 
+        output = backbone(input).squeeze(-1).squeeze(-1)
+    else:
+        output = body.forward_features(input, params.ft_features)
+    return output 
 
 # # optimizer configuration
 # _optimizer_map = {
