@@ -1,17 +1,17 @@
 save_dir                    = './logs'
 
-miniImageNet_path           	= '/home/yujin/jupyter/data/cdfsl/miniImagenet'
-miniImageNet_test_path          = '/home/yujin/jupyter/data/cdfsl/miniImagenet_test'
-tieredImageNet_path           	= '/home/yujin/jupyter/data/cdfsl/tieredImagenet/train'
-tieredImageNet_test_path        = '/home/yujin/jupyter/data/cdfsl/tieredImagenet/test'
+miniImageNet_path           	= '/for_kaist/kaist_osilab/cdfsl_data/miniImagenet'
+miniImageNet_test_path          = '/for_kaist/kaist_osilab/cdfsl_data/miniImagenet_test'
+tieredImageNet_path           	= '/for_kaist/kaist_osilab/cdfsl_data/tieredImagenet/train'
+tieredImageNet_test_path        = '/for_kaist/kaist_osilab/cdfsl_data/tieredImagenet/test'
 DTD_path 						= '/ssd/dtd/images/'
 
-ISIC_path = "/home/yujin/jupyter/data/cdfsl/ISIC"
-ChestX_path = "/home/yujin/jupyter/data/cdfsl/chestX"
-CropDisease_path = "/home/yujin/jupyter/data/cdfsl/CropDiseases"
-EuroSAT_path = "/home/yujin/jupyter/data/cdfsl/EuroSAT"
+ISIC_path = "/for_kaist/kaist_osilab/cdfsl_data/ISIC"
+ChestX_path = "/for_kaist/kaist_osilab/cdfsl_data/chestX"
+CropDisease_path = "/for_kaist/kaist_osilab/cdfsl_data/CropDiseases"
+EuroSAT_path = "/for_kaist/kaist_osilab/cdfsl_data/EuroSAT"
 
-cars_path = '/home/yujin/jupyter/data/cdfsl/cars_cdfsl'
-cub_path = '/home/yujin/jupyter/data/cdfsl/CUB_200_2011/images'
-places_path = '/home/yujin/jupyter/data/cdfsl/places_cdfsl'
-plantae_path = '/home/yujin/jupyter/data/cdfsl/plantae_cdfsl'
+cars_path = '/for_kaist/kaist_osilab/cdfsl_data/cars_cdfsl'
+cub_path = '/for_kaist/kaist_osilab/cdfsl_data/images'
+places_path = '/for_kaist/kaist_osilab/cdfsl_data/places_cdfsl'
+plantae_path = '/for_kaist/kaist_osilab/cdfsl_data/plantae_cdfsl'
