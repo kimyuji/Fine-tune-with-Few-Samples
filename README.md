@@ -1,4 +1,4 @@
-# Instability of Fine-TUning 
+# Instability of Fine-Tuning 
 
 
 ## Jupyter Notebook File info (in "unnecessary" Folder)

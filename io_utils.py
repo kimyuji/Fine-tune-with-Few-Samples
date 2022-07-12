@@ -79,7 +79,7 @@ def parse_args(mode):
     parser.add_argument('--ft_episode_seed', default=0, type=int)
 
     # option for training
-    parser.add_argument('--ft_valid_acc', default = None, type=str, help ='{clean, aug}')
+    parser.add_argument('--ft_valid_mode', default = None, type=str, help ='{random_aug versions, "fixed_aug", "clean"}')
     parser.add_argument('--ft_train_with_clean', action='store_true', help="{This option is only available on full update with augmentation used} train augmented imgs with original imgs")
     parser.add_argument('--ft_no_pretrain', action='store_true', help="if true, pretrained parts are random initialized")
 
@@ -110,7 +110,7 @@ def parse_args(mode):
     parser.add_argument('--ft_tau', default=0.5, type=float, help='Tau for contrastive loss')
 
     # TTA options
-    parser.add_argument('--TTA_ver', default='test', type=str, help='version : {test, traintest}')
+    parser.add_argument('--ft_tta_mode', default=None, type=str, help='version : {"fixed_aug", "fixed_hflip", random_aug versions}')
     
 
     if mode == 'train' or mode == 'pretrain':
@@ -154,7 +154,8 @@ def parse_args(mode):
         # For STARTUP-like split (deprecated. Update with finetune.py)
         parser.add_argument('--startup_split', action='store_true', help ='Use 80% of dataset, similar to STARTUP. Enabled automatically for simclr_finetune.')
         # For split (split may be used depending on pretrain_type
-        parser.add_argument('--unlabeled_ratio', default=20, type=int, help ='Percentage of dataset used for unlabeled split')
+        parser.add_argument('--unlabeled_ratio', default=0, type=int, help ='Percentage of dataset used for unlabeled split')
+        # parser.add_argument('--unlabeled_ratio', default=20, type=int, help ='Percentage of dataset used for unlabeled split')
         parser.add_argument('--split_seed', default=1, type=int, help ='Random seed used for split. If set to 1 and unlabeled_ratio==20, will use split defined by STARTUP')
     elif mode == 'save_features':
         parser.add_argument('--split'       , default='novel', help='base/val/novel') #default novel, but you can also test base/val class accuracy if you want
@@ -181,8 +182,8 @@ def parse_args(mode):
         raise AssertionError('finetune parts should be either body or full in ordr to calculate vscore')
     if (params.ft_SS and params.ft_augmentation) or (params.ft_SS and params.ft_mixup) or (params.ft_SS and params.ft_cutmix) or (params.ft_SS and params.ft_manifold_mixup):
         raise AssertionError('You cant use any augmentation in self-supervised learning')
-    if (params.v_score and not params.ft_intermediate_test) or (params.ft_valid_acc and not params.ft_intermediate_test):
-        raise AssertionError('You shoud use intermediate testing and v_score/ft_valid_acc at the same time')
+    if (params.v_score and not params.ft_intermediate_test) or (params.ft_valid_mode and not params.ft_intermediate_test):
+        raise AssertionError('You shoud use intermediate testing and v_score/ft_valid_mode at the same time')
 
     # Assign num_classes
     if params.dataset == 'miniImageNet':

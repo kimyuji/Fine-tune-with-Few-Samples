@@ -628,7 +628,7 @@ def Torch_ResNet18():
     modules=list(resnet18.children())[:-1]
     resnet18=nn.Sequential(*modules)
     for p in resnet18.parameters():
-        p.requires_grad = False
+        p.requires_grad = True
     return resnet18
 
 def Torch_ResNet34():
@@ -636,7 +636,7 @@ def Torch_ResNet34():
     modules=list(resnet34.children())[:-1]
     resnet34=nn.Sequential(*modules)
     for p in resnet34.parameters():
-        p.requires_grad = False
+        p.requires_grad = True
     return resnet34
 
 def Torch_ResNet50():
@@ -644,7 +644,7 @@ def Torch_ResNet50():
     modules=list(resnet50.children())[:-1]
     resnet50=nn.Sequential(*modules)
     for p in resnet50.parameters():
-        p.requires_grad = False
+        p.requires_grad = True
     return resnet50
 
 def Torch_ResNet101():
@@ -652,7 +652,7 @@ def Torch_ResNet101():
     modules=list(resnet101.children())[:-1]
     resnet101=nn.Sequential(*modules)
     for p in resnet101.parameters():
-        p.requires_grad = False
+        p.requires_grad = True
     return resnet101
 
 def Torch_ResNet152():
@@ -660,7 +660,7 @@ def Torch_ResNet152():
     modules=list(resnet152.children())[:-1]
     resnet152=nn.Sequential(*modules)
     for p in resnet152.parameters():
-        p.requires_grad = False
+        p.requires_grad = True
     return resnet152
 
 

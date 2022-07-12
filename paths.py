@@ -177,13 +177,12 @@ def get_ft_output_directory(params, makedirs=True, experiment=False):
         path = os.path.join(path, 'label_smoothing_{}'.format(params.ft_label_smoothing))
     if params.ft_update_scheduler:
         path = os.path.join(path, params.ft_update_scheduler)
-    
-
-    if params.ft_no_pretrain:
-        path = path.replace("default", "no_pretrain")
 
     if params.ft_scheduler_start != params.ft_scheduler_end:
         path = os.path.join(path, 'scheduler_{:03d}_{:03d}'.format(params.ft_scheduler_start, params.ft_scheduler_end))
+
+    # if params.ft_tta_mode:
+    #     path = os.path.join(path, "tta_" + params.ft_tta_mode)
     
     if makedirs:
         os.makedirs(path, exist_ok=True)

@@ -65,6 +65,14 @@ def main(params):
                                                      split_seed=params.split_seed,
                                                      episode_seed=params.ft_episode_seed)
 
+    support_clean_loader = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=True,
+                                                     n_query_shot=q, n_episodes=n_episodes, n_epochs=1,
+                                                     augmentation=params.ft_augmentation,
+                                                     unlabeled_ratio=0,
+                                                     num_workers=params.num_workers,
+                                                     split_seed=params.split_seed,
+                                                     episode_seed=params.ft_episode_seed)
+
     query_loader = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=False,
                                                    n_query_shot=q, n_episodes=n_episodes, n_epochs=1,
                                                    augmentation=None,
@@ -90,6 +98,7 @@ def main(params):
     assert (len(query_loader) == n_episodes)
 
     support_iterator = iter(support_loader)
+    support_clean_iterator = iter(support_clean_loader)
     support_batches = math.ceil(n_data / bs)
     if valid_loader is not None:
         valid_iterator = iter(valid_loader)
@@ -103,6 +112,7 @@ def main(params):
     valid_history_path = get_ft_valid_history_path(output_dir)
     test_history_path = get_ft_test_history_path(output_dir)
     support_v_score_history_path, query_v_score_history_path = get_ft_v_score_history_path(output_dir)
+    shift_history_path = train_history_path.replace('train_history', 'shift_history')
 
     params_path = get_ft_params_path(output_dir)
 
@@ -133,6 +143,9 @@ def main(params):
                                      columns=['epoch{}'.format(e+1) for e in range(n_epoch)])
     df_v_score_query = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
                            columns=['epoch{}'.format(e) for e in range(n_epoch+1)])
+    df_shift = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
+                           columns=['shift', 'test_acc'])
+    
     
     # Pre-train state
     if not torch_pretrained:
@@ -194,6 +207,8 @@ def main(params):
         y_support = torch.arange(w).repeat_interleave(s).cuda() # 각 요소를 반복 [000001111122222....]
         y_support_np = y_support.cpu().numpy()
 
+        x_clean_support = next(support_clean_iterator)[0].cuda()
+
         if valid_iterator is not None:
             f_valid = None
             y_valid = torch.arange(w).repeat_interleave(s).cuda()
@@ -220,6 +235,7 @@ def main(params):
         test_acc_history = []
         support_v_score = []
         query_v_score = []
+        shift_acc_history = []
 
         # V-measure support and query for epoch 0
         if s != 1:
@@ -305,7 +321,6 @@ def main(params):
                 if aug_bool and mix_bool: # cutmix, mixup
                     y_shuffled_batch = y_shuffled[batch_indices]
 
-
                 if aug_bool:
                     f_batch = body_forward(x_support_aug[batch_indices], body, backbone, torch_pretrained, params)
                     if params.ft_manifold_mixup:
@@ -333,7 +348,7 @@ def main(params):
             train_loss = total_loss / support_batches
             train_acc = correct / n_data
 
-            if params.ft_intermediate_test or epoch == n_epoch - 1:
+            if epoch == n_epoch - 1:
                 body.eval()
                 head.eval()
                 # Validation Set Evaluation
@@ -356,13 +371,16 @@ def main(params):
                 #     support_v_score.append(v_measure_score(cluster_pred, y_support_np))
 
                 # Test (Query) Set Evaluation                
-                with torch.no_grad():      
-                    # f_support = body_forward(x_clean_support, body, backbone, torch_pretrained, params)                  
+                with torch.no_grad():                  
+                    f_support = body_forward(x_clean_support, body, backbone, torch_pretrained, params)
                     f_query = body_forward(x_query, body, backbone, torch_pretrained, params)
                     pred = head(f_query)
                     if params.ft_tta_mode and 'fixed' in params.ft_tta_mode :
                         pred = torch.mean(torch.cat(torch.chunk(pred.unsqueeze(0), num_aug, dim=1), axis=0), axis=0)
                     correct = torch.eq(y_query, pred.argmax(dim=1)).sum()
+                    f_support_mean = torch.mean(torch.cat(torch.chunk(f_support.unsqueeze(0), w, dim=1), axis=0), axis=1)
+                    f_query_mean = torch.mean(torch.cat(torch.chunk(f_query.unsqueeze(0), w, dim=1), axis=0), axis=1)
+                    shift = np.abs(f_support_mean.cpu().numpy()-f_query_mean.cpu().numpy()).sum(axis=1).mean()
                 test_acc = correct / pred.shape[0]
                 # Query V-measure
                 if params.v_score:
@@ -385,45 +403,25 @@ def main(params):
             valid_acc_history.append(valid_acc.item())
             test_acc_history.append(test_acc.item())
             train_loss_history.append(train_loss)
-
-        df_train.loc[episode + 1] = train_acc_history
-        df_train.to_csv(train_history_path)
-        df_test.loc[episode + 1] = test_acc_history
-        df_test.to_csv(test_history_path)
-        df_loss.loc[episode + 1] = train_loss_history
-        df_loss.to_csv(loss_history_path)
+            
+        shift_acc_history.append(shift.item()) 
+        shift_acc_history.append(test_acc.item())
+        df_shift.loc[episode + 1] = shift_acc_history
+        df_shift.to_csv(shift_history_path)
 
         if params.ft_valid_mode:
             df_valid.loc[episode + 1] = valid_acc_history
-            df_valid.to_csv(valid_history_path)
 
-        if params.v_score:
-            if params.n_shot != 1:
-                df_v_score_support.loc[episode + 1] = support_v_score
-                df_v_score_support.to_csv(support_v_score_history_path)
-            df_v_score_query.loc[episode + 1] = query_v_score
-            df_v_score_query.to_csv(query_v_score_history_path)
-
-        if params.ft_valid_mode:
-            df_valid.loc[episode + 1] = valid_acc_history
-            fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} valid_acc={:6.2f} test_acc={:6.2f}'
-            print(fmt.format(episode, train_loss, train_acc_history[-1] * 100, valid_acc_history[-1] * 100, test_acc_history[-1] * 100))
-        else: 
-            fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_acc={:6.2f}'
-            print(fmt.format(episode, train_loss, train_acc_history[-1] * 100, test_acc_history[-1] * 100))
+        fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_acc={:6.2f} shift={:6.2f}'
+        print(fmt.format(episode, train_loss, train_acc.item() * 100, test_acc.item() * 100, shift.item()))
 
     fmt = 'Final Results: Acc={:5.2f} Std={:5.2f}'
-    print(fmt.format(df_test.mean()[-1] * 100, 1.96 * df_test.std()[-1] / np.sqrt(n_episodes) * 100))
+    print("finish saving shift")
     end = time.time()
 
     print('Saved history to:')
-    print(train_history_path)
-    print(test_history_path)
-    df_train.to_csv(train_history_path)
-    df_test.to_csv(test_history_path)
-    df_loss.to_csv(loss_history_path)
-    if params.ft_valid_mode:
-        df_valid.to_csv(valid_history_path)
+    print(shift_history_path)
+    df_shift.to_csv(shift_history_path)
     print("\nIt took {:6.2f} min to finish current training\n".format((end-start)/60))
 
 if __name__ == '__main__':
