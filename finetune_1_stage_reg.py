@@ -6,6 +6,7 @@ import pickle
 from webbrowser import get
 import pandas as pd
 import torch.nn as nn
+#import torchsummary as summary
 from torchvision import transforms
 import itertools
 from backbone import get_backbone_class
@@ -44,7 +45,10 @@ def main(params):
 
     # Model
     backbone = get_backbone_class(params.backbone)()
-    body = get_model_class(params.model)(backbone, params)
+    backbone_clean = get_backbone_class(params.backbone)()
+
+    body = get_model_class(params.model)(backbone, params) # f
+    body_clean = get_model_class(params.model)(backbone_clean, params) # f*
 
     if params.ft_features is None:
         pass
@@ -59,6 +63,14 @@ def main(params):
     support_loader = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=True,
                                                      n_query_shot=q, n_episodes=n_episodes, n_epochs=support_epochs,
                                                      augmentation=params.ft_augmentation,
+                                                     unlabeled_ratio=0,
+                                                     num_workers=params.num_workers,
+                                                     split_seed=params.split_seed,
+                                                     episode_seed=params.ft_episode_seed)
+
+    support_clean_loader = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=True,
+                                                     n_query_shot=q, n_episodes=n_episodes, n_epochs=support_epochs,
+                                                     augmentation=None,
                                                      unlabeled_ratio=0,
                                                      num_workers=params.num_workers,
                                                      split_seed=params.split_seed,
@@ -89,6 +101,7 @@ def main(params):
     assert (len(query_loader) == n_episodes)
 
     support_iterator = iter(support_loader)
+    support_clean_iterator = iter(support_clean_loader)
     support_batches = math.ceil(n_data / bs)
     if valid_loader is not None:
         valid_iterator = iter(valid_loader)
@@ -97,10 +110,10 @@ def main(params):
     query_iterator = iter(query_loader)
 
     # Output (history, params)
-    train_history_path = get_ft_train_history_path(output_dir)
-    loss_history_path = get_ft_loss_history_path(output_dir)
-    valid_history_path = get_ft_valid_history_path(output_dir)
-    test_history_path = get_ft_test_history_path(output_dir)
+    train_history_path = get_ft_train_history_path(output_dir).replace('.csv', '_{}.csv'.format(params.one_stage_reg))
+    loss_history_path = get_ft_loss_history_path(output_dir).replace('.csv', '_{}.csv'.format(params.one_stage_reg))
+    valid_history_path = get_ft_valid_history_path(output_dir).replace('.csv', '_{}.csv'.format(params.one_stage_reg))
+    test_history_path = get_ft_test_history_path(output_dir).replace('.csv', '_{}.csv'.format(params.one_stage_reg))
     support_v_score_history_path, query_v_score_history_path = get_ft_v_score_history_path(output_dir)
 
     params_path = get_ft_params_path(output_dir)
@@ -118,7 +131,7 @@ def main(params):
     # saving parameters on this json file
     with open(params_path, 'w') as f_batch:
         json.dump(vars(params), f_batch, indent=4)
-    
+    l1_dist = nn.PairwiseDistance(p=1) # l1 distance for aux_loss
     # 저장할 dataframe
     df_train = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
                             columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
@@ -147,6 +160,7 @@ def main(params):
         print('Using pre-train state:', body_state_path)
         print()
         state = torch.load(body_state_path)
+        state_clean = torch.load(body_state_path)
     else:
         pass
 
@@ -173,24 +187,37 @@ def main(params):
         # Reset models for each episode
         if not torch_pretrained:
             body.load_state_dict(copy.deepcopy(state))  # note, override model.load_state_dict to change this behavior.
+            body_clean.load_state_dict(copy.deepcopy(state_clean))
         else:
             body = get_model_class(params.model)(backbone, params)
+            body_clean = get_model_class(params.model)(backbone, params)
 
         head = get_classifier_head_class(params.ft_head)(512, params.n_way, params)  # TODO: apply ft_features
+        head_clean = get_classifier_head_class(params.ft_head)(512, params.n_way, params)
 
         body.cuda()
         head.cuda()
+
+        body_clean.cuda()
+        head_clean.cuda()
 
         opt_params = []
         opt_params.append({'params': head.parameters()})
         opt_params.append({'params': body.parameters()})
         optimizer = torch.optim.SGD(opt_params, lr=params.ft_lr, momentum=0.9, dampening=0.9, weight_decay=0.001)
 
+        opt_clean_params = []
+        opt_clean_params.append({'params': head_clean.parameters()})
+        opt_clean_params.append({'params': body_clean.parameters()})
+        optimizer_clean = torch.optim.SGD(opt_clean_params, lr=params.ft_lr, momentum=0.9, dampening=0.9, weight_decay=0.001)
+
         criterion = nn.CrossEntropyLoss().cuda()
+        criterion_clean = nn.CrossEntropyLoss().cuda()
 
         x_support = None
         f_support = None
         y_support = torch.arange(w).repeat_interleave(s).cuda() # 각 요소를 반복 [000001111122222....]
+        y_clean_support = torch.arange(w).repeat_interleave(s).cuda()
         y_support_np = y_support.cpu().numpy()
 
         if valid_iterator is not None:
@@ -239,11 +266,15 @@ def main(params):
             body.train()
             head.train()
 
+            body_clean.train()
+            head_clean.train()
+
             aug_bool = mix_bool or params.ft_augmentation
             if params.ft_scheduler_end is not None: # if aug is scheduled, 
                 aug_bool = (epoch < params.ft_scheduler_end and epoch >= params.ft_scheduler_start) and aug_bool
 
             x_support = next(support_iterator)[0].cuda()
+            x_clean_support = next(support_clean_iterator)[0].cuda()
 
             total_loss = 0
             correct = 0
@@ -299,33 +330,52 @@ def main(params):
                 end_index = min(i * bs + bs, w * s)
                 batch_indices = indices[start_index:end_index]
 
-                y_batch = y_support[batch_indices] # label
-
+                y_batch = y_support[batch_indices] ; y_clean_batch = y_clean_support[batch_indices]
+				
                 if aug_bool and mix_bool: # cutmix, mixup
                     y_shuffled_batch = y_shuffled[batch_indices]
 
-
-                if aug_bool:
-                    f_batch = body_forward(x_support_aug[batch_indices], body, backbone, torch_pretrained, params)
-                    if params.ft_manifold_mixup:
-                        f_batch_shuffled = body_forward(x_support[indices_shuffled[batch_indices]], body, backbone, torch_pretrained, params)
-                        f_batch = lam * f_batch[:,:] + (1. - lam) * f_batch_shuffled[:,:]
-                else:
-                    f_batch = body_forward(x_support[batch_indices], body, backbone, torch_pretrained, params)
+                f_batch = body_forward(x_support_aug[batch_indices], body, backbone, torch_pretrained, params)
+                if params.ft_manifold_mixup:
+                    f_batch_shuffled = body_forward(x_support[indices_shuffled[batch_indices]], body, backbone, torch_pretrained, params)
+                    f_batch = lam * f_batch[:,:] + (1. - lam) * f_batch_shuffled[:,:]
+                    
+                f_clean_batch = body_forward(x_clean_support[batch_indices], body_clean, backbone_clean, torch_pretrained, params)
 
                 # head 거치기
                 pred = head(f_batch)
+                pred_clean = head_clean(f_clean_batch)
 
                 correct += torch.eq(y_batch, pred.argmax(dim=1)).sum()
 
+                #aux_loss = l1_dist(f_clean_batch, f_batch).mean() # l1 distance
+                
+                loss_clean = criterion_clean(pred_clean, y_clean_batch)
+                loss_aug = criterion(pred, y_batch)
+
+                distance = l1_dist(f_clean_batch.detach(), f_batch.detach()).mean()
+
                 if aug_bool and mix_bool:
-                    loss = criterion(pred, y_batch) * lam + criterion(pred, y_shuffled_batch) * (1. - lam)
+                    loss_aug = criterion(pred, y_batch) * lam + criterion(pred, y_shuffled_batch) * (1. - lam)
+                    
+                    
+
+                if params.one_stage_reg  == 'both_CE': 
+                    loss = 0.5 * loss_clean + 0.5 * loss_aug + 0.1 * distance
+                elif params.one_stage_reg  == 'aug_CE': 
+                    loss = 0.9 * loss_aug + 0.1 * distance
+                elif params.one_stage_reg  == 'clean_CE': 
+                    loss = 0.9 * loss_clean + 0.1 * distance
                 else:
-                    loss = criterion(pred, y_batch)
+                    raise("You need to choose one of {both_CE, aug_CE, clean_CE}")
 
                 optimizer.zero_grad() 
-                loss.backward() 
+                loss.backward(retain_graph=True) 
                 optimizer.step()
+
+                optimizer_clean.zero_grad() 
+                loss_clean.backward() 
+                optimizer_clean.step()
 
                 total_loss += loss.item()
 

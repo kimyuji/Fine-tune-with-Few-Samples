@@ -6,7 +6,6 @@ import pickle
 from webbrowser import get
 import pandas as pd
 import torch.nn as nn
-import torchsummary as summary
 from torchvision import transforms
 import itertools
 from backbone import get_backbone_class
@@ -67,7 +66,15 @@ def main(params):
 
     support_clean_loader = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=True,
                                                      n_query_shot=q, n_episodes=n_episodes, n_epochs=1,
-                                                     augmentation=params.ft_augmentation,
+                                                     augmentation=None, 
+                                                     unlabeled_ratio=0,
+                                                     num_workers=params.num_workers,
+                                                     split_seed=params.split_seed,
+                                                     episode_seed=params.ft_episode_seed)
+    
+    support_aug_loader = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=True,
+                                                     n_query_shot=q, n_episodes=n_episodes, n_epochs=1,
+                                                     augmentation=params.ft_augmentation, 
                                                      unlabeled_ratio=0,
                                                      num_workers=params.num_workers,
                                                      split_seed=params.split_seed,
@@ -99,6 +106,7 @@ def main(params):
 
     support_iterator = iter(support_loader)
     support_clean_iterator = iter(support_clean_loader)
+    support_aug_iterator = iter(support_aug_loader)
     support_batches = math.ceil(n_data / bs)
     if valid_loader is not None:
         valid_iterator = iter(valid_loader)
@@ -144,7 +152,7 @@ def main(params):
     df_v_score_query = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
                            columns=['epoch{}'.format(e) for e in range(n_epoch+1)])
     df_shift = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
-                           columns=['shift', 'test_acc'])
+                           columns=['test_acc', 'shift_clean', 'shift_aug'])
     
     
     # Pre-train state
@@ -200,7 +208,7 @@ def main(params):
         opt_params.append({'params': body.parameters()})
         optimizer = torch.optim.SGD(opt_params, lr=params.ft_lr, momentum=0.9, dampening=0.9, weight_decay=0.001)
 
-        criterion = nn.CrossEntropyLoss(label_smoothing=params.ft_label_smoothing).cuda()
+        criterion = nn.CrossEntropyLoss().cuda()
 
         x_support = None
         f_support = None
@@ -208,6 +216,7 @@ def main(params):
         y_support_np = y_support.cpu().numpy()
 
         x_clean_support = next(support_clean_iterator)[0].cuda()
+        x_aug_support = next(support_aug_iterator)[0].cuda()
 
         if valid_iterator is not None:
             f_valid = None
@@ -371,16 +380,26 @@ def main(params):
                 #     support_v_score.append(v_measure_score(cluster_pred, y_support_np))
 
                 # Test (Query) Set Evaluation                
-                with torch.no_grad():                  
-                    f_support = body_forward(x_clean_support, body, backbone, torch_pretrained, params)
+                with torch.no_grad():
+
                     f_query = body_forward(x_query, body, backbone, torch_pretrained, params)
                     pred = head(f_query)
                     if params.ft_tta_mode and 'fixed' in params.ft_tta_mode :
                         pred = torch.mean(torch.cat(torch.chunk(pred.unsqueeze(0), num_aug, dim=1), axis=0), axis=0)
                     correct = torch.eq(y_query, pred.argmax(dim=1)).sum()
+
+                    # shift with clean support                  
+                    f_support = body_forward(x_clean_support, body, backbone, torch_pretrained, params)
                     f_support_mean = torch.mean(torch.cat(torch.chunk(f_support.unsqueeze(0), w, dim=1), axis=0), axis=1)
                     f_query_mean = torch.mean(torch.cat(torch.chunk(f_query.unsqueeze(0), w, dim=1), axis=0), axis=1)
-                    shift = np.abs(f_support_mean.cpu().numpy()-f_query_mean.cpu().numpy()).sum(axis=1).mean()
+                    shift_clean = np.abs(f_support_mean.cpu().numpy()-f_query_mean.cpu().numpy()).sum(axis=1).mean()
+
+                    # shift with aug support
+                    f_support = body_forward(x_aug_support, body, backbone, torch_pretrained, params)
+                    f_support_mean = torch.mean(torch.cat(torch.chunk(f_support.unsqueeze(0), w, dim=1), axis=0), axis=1)
+                    f_query_mean = torch.mean(torch.cat(torch.chunk(f_query.unsqueeze(0), w, dim=1), axis=0), axis=1)
+                    shift_aug = np.abs(f_support_mean.cpu().numpy()-f_query_mean.cpu().numpy()).sum(axis=1).mean()
+
                 test_acc = correct / pred.shape[0]
                 # Query V-measure
                 if params.v_score:
@@ -404,16 +423,17 @@ def main(params):
             test_acc_history.append(test_acc.item())
             train_loss_history.append(train_loss)
             
-        shift_acc_history.append(shift.item()) 
         shift_acc_history.append(test_acc.item())
+        shift_acc_history.append(shift_clean.item()) 
+        shift_acc_history.append(shift_aug.item()) 
         df_shift.loc[episode + 1] = shift_acc_history
         df_shift.to_csv(shift_history_path)
 
         if params.ft_valid_mode:
             df_valid.loc[episode + 1] = valid_acc_history
 
-        fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_acc={:6.2f} shift={:6.2f}'
-        print(fmt.format(episode, train_loss, train_acc.item() * 100, test_acc.item() * 100, shift.item()))
+        fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_acc={:6.2f} shift_clean={:6.2f} shift_aug={:6.2f}'
+        print(fmt.format(episode, train_loss, train_acc.item() * 100, test_acc.item() * 100, shift_clean.item(), shift_aug.item()))
 
     fmt = 'Final Results: Acc={:5.2f} Std={:5.2f}'
     print("finish saving shift")
