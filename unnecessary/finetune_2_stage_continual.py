@@ -48,7 +48,7 @@ def main(params):
     backbone_clean = get_backbone_class(params.backbone)()
 
     body = get_model_class(params.model)(backbone, params) # f
-    body_clean = get_model_class(params.model)(backbone_clean, params) # f*
+    body_clean = get_model_class(params.model)(backbone_clean, params)
 
     if params.ft_features is None:
         pass
@@ -110,10 +110,10 @@ def main(params):
     query_iterator = iter(query_loader)
 
     # Output (history, params)
-    train_history_path = get_ft_train_history_path(output_dir).replace('.csv', '_stage2_{}.csv'.format(params.two_stage_reg_rate))
-    loss_history_path = get_ft_loss_history_path(output_dir).replace('.csv', '_stage2_{}.csv'.format(params.two_stage_reg_rate))
-    valid_history_path = get_ft_valid_history_path(output_dir).replace('.csv', '_stage2_{}.csv'.format(params.two_stage_reg_rate))
-    test_history_path = get_ft_test_history_path(output_dir).replace('.csv', '_stage2_{}.csv'.format(params.two_stage_reg_rate))
+    train_history_path = get_ft_train_history_path(output_dir).replace('.csv', '_stage2_continual_200_{}.csv'.format(params.two_stage_reg_rate))
+    loss_history_path = get_ft_loss_history_path(output_dir).replace('.csv', '_stage2_continual_200_{}.csv'.format(params.two_stage_reg_rate))
+    valid_history_path = get_ft_valid_history_path(output_dir).replace('.csv', '_stage2_continual_200_{}.csv'.format(params.two_stage_reg_rate))
+    test_history_path = get_ft_test_history_path(output_dir).replace('.csv', '_stage2_continual_200_{}.csv'.format(params.two_stage_reg_rate))
     support_v_score_history_path, query_v_score_history_path = get_ft_v_score_history_path(output_dir)
 
     params_path = get_ft_params_path(output_dir)
@@ -160,7 +160,6 @@ def main(params):
         print('Using pre-train state:', body_state_path)
         print()
         state = torch.load(body_state_path)
-        state_clean = torch.load(body_state_path)
     else:
         pass
 
@@ -187,32 +186,20 @@ def main(params):
         # Reset models for each episode
         if not torch_pretrained:
             body.load_state_dict(copy.deepcopy(state))  # note, override model.load_state_dict to change this behavior.
-            body_clean.load_state_dict(copy.deepcopy(state_clean))
         else:
             body = get_model_class(params.model)(backbone, params)
-            body_clean = get_model_class(params.model)(backbone, params)
 
         head = get_classifier_head_class(params.ft_head)(512, params.n_way, params)  # TODO: apply ft_features
-        head_clean = get_classifier_head_class(params.ft_head)(512, params.n_way, params)
 
         body.cuda()
         head.cuda()
-
-        body_clean.cuda()
-        head_clean.cuda()
 
         opt_params = []
         opt_params.append({'params': head.parameters()})
         opt_params.append({'params': body.parameters()})
         optimizer = torch.optim.SGD(opt_params, lr=params.ft_lr, momentum=0.9, dampening=0.9, weight_decay=0.001)
 
-        opt_clean_params = []
-        opt_clean_params.append({'params': head_clean.parameters()})
-        opt_clean_params.append({'params': body_clean.parameters()})
-        optimizer_clean = torch.optim.SGD(opt_clean_params, lr=params.ft_lr, momentum=0.9, dampening=0.9, weight_decay=0.001)
-
         criterion = nn.CrossEntropyLoss().cuda()
-        criterion_clean = nn.CrossEntropyLoss().cuda()
 
         x_support = None
         f_support = None
@@ -263,8 +250,8 @@ def main(params):
         # Stage One : train f with s
         for epoch in range(n_epoch):
             # Train
-            body_clean.train()
-            head_clean.train()
+            body.train()
+            head.train()
 
             x_clean_support = next(support_clean_iterator)[0].cuda()
 
@@ -279,20 +266,20 @@ def main(params):
                 batch_indices = indices[start_index:end_index]
 
                 y_clean_batch = y_clean_support[batch_indices] 
-                f_clean_batch = body_forward(x_clean_support[batch_indices], body_clean, backbone_clean, torch_pretrained, params)
-                pred_clean = head_clean(f_clean_batch)
+                f_clean_batch = body_forward(x_clean_support[batch_indices], body, backbone, torch_pretrained, params)
+                pred_clean = head(f_clean_batch)
 
                 correct += torch.eq(y_clean_batch, pred_clean.argmax(dim=1)).sum()
 
                 #aux_loss = l1_dist(f_clean_batch, f_batch).mean() # l1 distance
                 
-                loss_clean = criterion_clean(pred_clean, y_clean_batch)
+                loss = criterion(pred_clean, y_clean_batch)
 
-                optimizer_clean.zero_grad() 
-                loss_clean.backward() 
-                optimizer_clean.step()
+                optimizer.zero_grad() 
+                loss.backward() 
+                optimizer.step()
 
-                total_loss += loss_clean.item()
+                total_loss += loss.item()
 
             train_loss = total_loss / support_batches
             train_acc = correct / n_data
@@ -302,8 +289,8 @@ def main(params):
                 head.eval()          
                 with torch.no_grad():      
                     # f_support = body_forward(x_clean_support, body, backbone, torch_pretrained, params)                  
-                    f_query = body_forward(x_query, body_clean, backbone_clean, torch_pretrained, params)
-                    pred = head_clean(f_query)
+                    f_query = body_forward(x_query, body, backbone, torch_pretrained, params)
+                    pred = head(f_query)
                     if params.ft_tta_mode and 'fixed' in params.ft_tta_mode :
                         pred = torch.mean(torch.cat(torch.chunk(pred.unsqueeze(0), num_aug, dim=1), axis=0), axis=0)
                     correct = torch.eq(y_query, pred.argmax(dim=1)).sum()
@@ -312,14 +299,15 @@ def main(params):
         fmt = 'Stage 1 Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_acc={:6.2f}'
         print(fmt.format(episode, train_loss, train_acc * 100, test_acc * 100))
 
+        body_clean = copy.deepcopy(body)
+        body_clean.eval()
+
+
         # Second Stage
         for epoch in range(n_epoch):
             # Train
             body.train()
             head.train()
-
-            body_clean.eval()
-            head_clean.eval()
 
             aug_bool = mix_bool or params.ft_augmentation
             if params.ft_scheduler_end is not None: # if aug is scheduled, 
@@ -407,8 +395,6 @@ def main(params):
 
                 if aug_bool and mix_bool:
                     loss_aug = criterion(pred, y_batch) * lam + criterion(pred, y_shuffled_batch) * (1. - lam)
-                    f_clean_batch_shuffled = body_forward(x_clean_support[indices_shuffled[batch_indices]], body, backbone, torch_pretrained, params)
-                    distance = lam * l1_dist(f_clean_batch.detach(), f_batch.detach()).mean() + (1.-lam) * l1_dist(f_clean_batch_shuffled.detach(), f_batch.detach()).mean()
                     
                 loss = params.two_stage_reg_rate * loss_aug + (1-params.two_stage_reg_rate) * distance
 

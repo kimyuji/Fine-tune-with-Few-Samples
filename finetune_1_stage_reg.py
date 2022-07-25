@@ -357,7 +357,8 @@ def main(params):
 
                 if aug_bool and mix_bool:
                     loss_aug = criterion(pred, y_batch) * lam + criterion(pred, y_shuffled_batch) * (1. - lam)
-                    
+                    f_clean_batch_shuffled = body_forward(x_clean_support[indices_shuffled[batch_indices]], body, backbone, torch_pretrained, params)
+                    distance = lam * l1_dist(f_clean_batch.detach(), f_batch.detach()).mean() + (1.-lam) * l1_dist(f_clean_batch_shuffled.detach(), f_batch.detach()).mean()
                     
 
                 if params.one_stage_reg  == 'both_CE': 

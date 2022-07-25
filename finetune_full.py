@@ -37,7 +37,7 @@ def main(params):
     bs = params.ft_batch_size
     n_data = params.n_way * params.n_shot
 
-    n_epoch = 100
+    n_epoch = params.ft_epochs
     w = params.n_way
     s = params.n_shot
     q = params.n_query_shot
@@ -102,6 +102,11 @@ def main(params):
     valid_history_path = get_ft_valid_history_path(output_dir)
     test_history_path = get_ft_test_history_path(output_dir)
     support_v_score_history_path, query_v_score_history_path = get_ft_v_score_history_path(output_dir)
+
+    if params.ft_epochs != 100:
+        train_history_path = train_history_path.replace('.csv', '_{}epochs.csv'.format(params.ft_epochs))
+        test_history_path = test_history_path.replace('.csv', '_{}epochs.csv'.format(params.ft_epochs))
+        loss_history_path = loss_history_path.replace('.csv', '_{}epochs.csv'.format(params.ft_epochs))
 
     params_path = get_ft_params_path(output_dir)
 

@@ -48,7 +48,7 @@ def main(params):
     backbone_clean = get_backbone_class(params.backbone)()
 
     body = get_model_class(params.model)(backbone, params) # f
-    body_clean = get_model_class(params.model)(backbone_clean, params) # f*
+    body_clean = get_model_class(params.model)(backbone_clean, params)
 
     if params.ft_features is None:
         pass
@@ -59,7 +59,7 @@ def main(params):
 
     # Dataloaders
     # Note that both dataloaders sample identical episodes, via episode_seed
-    support_epochs = n_epoch
+    support_epochs = 50
     support_loader = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=True,
                                                      n_query_shot=q, n_episodes=n_episodes, n_epochs=support_epochs,
                                                      augmentation=params.ft_augmentation,
@@ -110,10 +110,10 @@ def main(params):
     query_iterator = iter(query_loader)
 
     # Output (history, params)
-    train_history_path = get_ft_train_history_path(output_dir).replace('.csv', '_stage2_{}.csv'.format(params.two_stage_reg_rate))
-    loss_history_path = get_ft_loss_history_path(output_dir).replace('.csv', '_stage2_{}.csv'.format(params.two_stage_reg_rate))
-    valid_history_path = get_ft_valid_history_path(output_dir).replace('.csv', '_stage2_{}.csv'.format(params.two_stage_reg_rate))
-    test_history_path = get_ft_test_history_path(output_dir).replace('.csv', '_stage2_{}.csv'.format(params.two_stage_reg_rate))
+    train_history_path = get_ft_train_history_path(output_dir).replace('.csv', '_stage2_continual_{}.csv'.format(params.two_stage_reg_rate))
+    loss_history_path = get_ft_loss_history_path(output_dir).replace('.csv', '_stage2_continual_{}.csv'.format(params.two_stage_reg_rate))
+    valid_history_path = get_ft_valid_history_path(output_dir).replace('.csv', '_stage2_continual_{}.csv'.format(params.two_stage_reg_rate))
+    test_history_path = get_ft_test_history_path(output_dir).replace('.csv', '_stage2_continual_{}.csv'.format(params.two_stage_reg_rate))
     support_v_score_history_path, query_v_score_history_path = get_ft_v_score_history_path(output_dir)
 
     params_path = get_ft_params_path(output_dir)
@@ -160,7 +160,6 @@ def main(params):
         print('Using pre-train state:', body_state_path)
         print()
         state = torch.load(body_state_path)
-        state_clean = torch.load(body_state_path)
     else:
         pass
 
@@ -187,32 +186,20 @@ def main(params):
         # Reset models for each episode
         if not torch_pretrained:
             body.load_state_dict(copy.deepcopy(state))  # note, override model.load_state_dict to change this behavior.
-            body_clean.load_state_dict(copy.deepcopy(state_clean))
         else:
             body = get_model_class(params.model)(backbone, params)
-            body_clean = get_model_class(params.model)(backbone, params)
 
         head = get_classifier_head_class(params.ft_head)(512, params.n_way, params)  # TODO: apply ft_features
-        head_clean = get_classifier_head_class(params.ft_head)(512, params.n_way, params)
 
         body.cuda()
         head.cuda()
-
-        body_clean.cuda()
-        head_clean.cuda()
 
         opt_params = []
         opt_params.append({'params': head.parameters()})
         opt_params.append({'params': body.parameters()})
         optimizer = torch.optim.SGD(opt_params, lr=params.ft_lr, momentum=0.9, dampening=0.9, weight_decay=0.001)
 
-        opt_clean_params = []
-        opt_clean_params.append({'params': head_clean.parameters()})
-        opt_clean_params.append({'params': body_clean.parameters()})
-        optimizer_clean = torch.optim.SGD(opt_clean_params, lr=params.ft_lr, momentum=0.9, dampening=0.9, weight_decay=0.001)
-
         criterion = nn.CrossEntropyLoss().cuda()
-        criterion_clean = nn.CrossEntropyLoss().cuda()
 
         x_support = None
         f_support = None
@@ -260,166 +247,144 @@ def main(params):
             cluster_pred = kmeans.fit(f_query_np).labels_
             query_v_score.append(v_measure_score(cluster_pred, y_query_np))
 
-        # Stage One : train f with s
+        
         for epoch in range(n_epoch):
-            # Train
-            body_clean.train()
-            head_clean.train()
+            # Stage One : train f with s
 
-            x_clean_support = next(support_clean_iterator)[0].cuda()
+            if epoch < 50:
+                # Train
+                body.train()
+                head.train()
 
-            total_loss = 0
-            correct = 0
-            indices = np.random.permutation(w * s) 
+                x_clean_support = next(support_clean_iterator)[0].cuda()
 
-            # For each iteration
-            for i in range(support_batches):
-                start_index = i * bs
-                end_index = min(i * bs + bs, w * s)
-                batch_indices = indices[start_index:end_index]
+                total_loss = 0
+                correct = 0
+                indices = np.random.permutation(w * s) 
 
-                y_clean_batch = y_clean_support[batch_indices] 
-                f_clean_batch = body_forward(x_clean_support[batch_indices], body_clean, backbone_clean, torch_pretrained, params)
-                pred_clean = head_clean(f_clean_batch)
+                # For each iteration
+                for i in range(support_batches):
+                    start_index = i * bs
+                    end_index = min(i * bs + bs, w * s)
+                    batch_indices = indices[start_index:end_index]
 
-                correct += torch.eq(y_clean_batch, pred_clean.argmax(dim=1)).sum()
+                    y_clean_batch = y_clean_support[batch_indices] 
+                    f_clean_batch = body_forward(x_clean_support[batch_indices], body, backbone, torch_pretrained, params)
+                    pred_clean = head(f_clean_batch)
 
-                #aux_loss = l1_dist(f_clean_batch, f_batch).mean() # l1 distance
-                
-                loss_clean = criterion_clean(pred_clean, y_clean_batch)
+                    correct += torch.eq(y_clean_batch, pred_clean.argmax(dim=1)).sum()
+                    loss = criterion(pred_clean, y_clean_batch)
 
-                optimizer_clean.zero_grad() 
-                loss_clean.backward() 
-                optimizer_clean.step()
+                    optimizer.zero_grad() 
+                    loss.backward() 
+                    optimizer.step()
 
-                total_loss += loss_clean.item()
+                    total_loss += loss.item()
 
-            train_loss = total_loss / support_batches
-            train_acc = correct / n_data
+                train_loss = total_loss / support_batches
+                train_acc = correct / n_data
 
-            if epoch == n_epoch - 1:
-                body.eval()
-                head.eval()          
-                with torch.no_grad():      
-                    # f_support = body_forward(x_clean_support, body, backbone, torch_pretrained, params)                  
-                    f_query = body_forward(x_query, body_clean, backbone_clean, torch_pretrained, params)
-                    pred = head_clean(f_query)
-                    if params.ft_tta_mode and 'fixed' in params.ft_tta_mode :
-                        pred = torch.mean(torch.cat(torch.chunk(pred.unsqueeze(0), num_aug, dim=1), axis=0), axis=0)
-                    correct = torch.eq(y_query, pred.argmax(dim=1)).sum()
-                test_acc = correct / pred.shape[0]
+                if epoch == 49:
+                    body_clean = copy.deepcopy(body)
+                    body_clean.eval()
 
-        fmt = 'Stage 1 Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_acc={:6.2f}'
-        print(fmt.format(episode, train_loss, train_acc * 100, test_acc * 100))
+            # Stage Two : train f with s' and regularizer
+            else:
+                aug_bool = mix_bool or params.ft_augmentation
+                if params.ft_scheduler_end is not None: # if aug is scheduled, 
+                    aug_bool = (epoch < params.ft_scheduler_end and epoch >= params.ft_scheduler_start) and aug_bool
 
-        # Second Stage
-        for epoch in range(n_epoch):
-            # Train
-            body.train()
-            head.train()
+                x_support = next(support_iterator)[0].cuda()
 
-            body_clean.eval()
-            head_clean.eval()
+                total_loss = 0
+                correct = 0
+                indices = np.random.permutation(w * s) 
 
-            aug_bool = mix_bool or params.ft_augmentation
-            if params.ft_scheduler_end is not None: # if aug is scheduled, 
-                aug_bool = (epoch < params.ft_scheduler_end and epoch >= params.ft_scheduler_start) and aug_bool
-
-            x_support = next(support_iterator)[0].cuda()
-
-            total_loss = 0
-            correct = 0
-            indices = np.random.permutation(w * s) 
-
-            if aug_bool:
-                x_support_aug = copy.deepcopy(x_support)
-                if mix_bool:
-                    if params.ft_mixup:
-                        mode = params.ft_mixup
-                    elif params.ft_cutmix:
-                        mode = params.ft_cutmix
-                    elif params.ft_manifold_mixup:
-                        mode = params.ft_manifold_mixup
-                    else:
-                        raise ValueError ("Unknown mode: %s" % mode)
-                    
-                    # lambda options
-                    if mode != 'lam':
-                        lam = np.random.beta(1.0, 1.0) 
-                    else: # mode == 'lam'
-                        lam = np.random.beta(0.01*(epoch+1), 0.01*(epoch+1))
-                    bbx1, bby1, bbx2, bby2 = rand_bbox(x_support.shape, lam) # cutmix corner points
-
-                    if mode == 'both' or mode == 'lam':
-                        indices_shuffled = torch.randperm(x_support.shape[0])
-                    else:
-                        shuffled = np.array([])
-                        if mode == 'same' :
-                            class_arr = range(w)
-                        elif mode == 'diff': 
-                            class_arr_idx = np.random.choice(range(len(class_shuffled)), 1)[0]
-                            class_arr = class_shuffled[class_arr_idx]
-
-                        for clss in class_arr:
-                            shuffled = np.append(shuffled, np.random.permutation(range(clss*s, (clss+1)*s))) 
-                        indices_shuffled = torch.from_numpy(shuffled).long()   
-
-                    # mixup
-                    if params.ft_mixup:
-                        x_support_aug = lam * x_support[:,:,:] + (1. - lam) * x_support[indices_shuffled,:,:]
+                if aug_bool:
+                    x_support_aug = copy.deepcopy(x_support)
+                    if mix_bool:
+                        if params.ft_mixup:
+                            mode = params.ft_mixup
+                        elif params.ft_cutmix:
+                            mode = params.ft_cutmix
+                        elif params.ft_manifold_mixup:
+                            mode = params.ft_manifold_mixup
+                        else:
+                            raise ValueError ("Unknown mode: %s" % mode)
                         
-                    # cutmix
-                    elif params.ft_cutmix: # recalculate ratio of img b by its area
-                        x_support_aug[:,:,bbx1:bbx2, bby1:bby2] = x_support[indices_shuffled,:,bbx1:bbx2, bby1:bby2]
-                        lam = 1 - ((bbx2 - bbx1) * (bby2 - bby1) / (x_support.shape[-1] * x_support.shape[-2])) # adjust lambda
+                        # lambda options
+                        if mode != 'lam':
+                            lam = np.random.beta(1.0, 1.0) 
+                        else: # mode == 'lam'
+                            lam = np.random.beta(0.01*(epoch+1), 0.01*(epoch+1))
+                        bbx1, bby1, bbx2, bby2 = rand_bbox(x_support.shape, lam) # cutmix corner points
+
+                        if mode == 'both' or mode == 'lam':
+                            indices_shuffled = torch.randperm(x_support.shape[0])
+                        else:
+                            shuffled = np.array([])
+                            if mode == 'same' :
+                                class_arr = range(w)
+                            elif mode == 'diff': 
+                                class_arr_idx = np.random.choice(range(len(class_shuffled)), 1)[0]
+                                class_arr = class_shuffled[class_arr_idx]
+
+                            for clss in class_arr:
+                                shuffled = np.append(shuffled, np.random.permutation(range(clss*s, (clss+1)*s))) 
+                            indices_shuffled = torch.from_numpy(shuffled).long()   
+
+                        # mixup
+                        if params.ft_mixup:
+                            x_support_aug = lam * x_support[:,:,:] + (1. - lam) * x_support[indices_shuffled,:,:]
+                            
+                        # cutmix
+                        elif params.ft_cutmix: # recalculate ratio of img b by its area
+                            x_support_aug[:,:,bbx1:bbx2, bby1:bby2] = x_support[indices_shuffled,:,bbx1:bbx2, bby1:bby2]
+                            lam = 1 - ((bbx2 - bbx1) * (bby2 - bby1) / (x_support.shape[-1] * x_support.shape[-2])) # adjust lambda
+                        
+                        y_shuffled = y_support[indices_shuffled]
+
+                # For each iteration
+                for i in range(support_batches):
+                    start_index = i * bs
+                    end_index = min(i * bs + bs, w * s)
+                    batch_indices = indices[start_index:end_index]
+
+                    y_batch = y_support[batch_indices]
                     
-                    y_shuffled = y_support[indices_shuffled]
+                    if aug_bool and mix_bool: # cutmix, mixup
+                        y_shuffled_batch = y_shuffled[batch_indices]
 
-            # For each iteration
-            for i in range(support_batches):
-                start_index = i * bs
-                end_index = min(i * bs + bs, w * s)
-                batch_indices = indices[start_index:end_index]
+                    f_batch = body_forward(x_support_aug[batch_indices], body, backbone, torch_pretrained, params)
+                    if params.ft_manifold_mixup:
+                        f_batch_shuffled = body_forward(x_support[indices_shuffled[batch_indices]], body, backbone, torch_pretrained, params)
+                        f_batch = lam * f_batch[:,:] + (1. - lam) * f_batch_shuffled[:,:]
+                        
+                    f_clean_batch = body_forward(x_clean_support[batch_indices], body_clean, backbone_clean, torch_pretrained, params)
 
-                y_batch = y_support[batch_indices]
-				
-                if aug_bool and mix_bool: # cutmix, mixup
-                    y_shuffled_batch = y_shuffled[batch_indices]
+                    # head 거치기
+                    pred = head(f_batch)
 
-                f_batch = body_forward(x_support_aug[batch_indices], body, backbone, torch_pretrained, params)
-                if params.ft_manifold_mixup:
-                    f_batch_shuffled = body_forward(x_support[indices_shuffled[batch_indices]], body, backbone, torch_pretrained, params)
-                    f_batch = lam * f_batch[:,:] + (1. - lam) * f_batch_shuffled[:,:]
+                    correct += torch.eq(y_batch, pred.argmax(dim=1)).sum()
+                    loss_aug = criterion(pred, y_batch)
                     
-                f_clean_batch = body_forward(x_clean_support[batch_indices], body_clean, backbone_clean, torch_pretrained, params)
+                    distance = l1_dist(f_clean_batch.detach(), f_batch.detach()).mean()
 
-                # head 거치기
-                pred = head(f_batch)
+                    if aug_bool and mix_bool:
+                        loss_aug = criterion(pred, y_batch) * lam + criterion(pred, y_shuffled_batch) * (1. - lam)
+                        f_clean_batch_shuffled = body_forward(x_clean_support[indices_shuffled[batch_indices]], body, backbone, torch_pretrained, params)
+                        distance = lam * l1_dist(f_clean_batch.detach(), f_batch.detach()).mean() + (1.-lam) * l1_dist(f_clean_batch_shuffled.detach(), f_batch.detach()).mean()
+                        
+                    loss = params.two_stage_reg_rate * loss_aug + (1-params.two_stage_reg_rate) * distance
 
-                correct += torch.eq(y_batch, pred.argmax(dim=1)).sum()
+                    optimizer.zero_grad() 
+                    loss.backward() 
+                    optimizer.step()
 
-                #aux_loss = l1_dist(f_clean_batch, f_batch).mean() # l1 distance
-                #loss_clean = criterion_clean(pred_clean, y_clean_batch)
+                    total_loss += loss.item()
 
-                loss_aug = criterion(pred, y_batch)
-
-                distance = l1_dist(f_clean_batch.detach(), f_batch.detach()).mean()
-
-                if aug_bool and mix_bool:
-                    loss_aug = criterion(pred, y_batch) * lam + criterion(pred, y_shuffled_batch) * (1. - lam)
-                    f_clean_batch_shuffled = body_forward(x_clean_support[indices_shuffled[batch_indices]], body, backbone, torch_pretrained, params)
-                    distance = lam * l1_dist(f_clean_batch.detach(), f_batch.detach()).mean() + (1.-lam) * l1_dist(f_clean_batch_shuffled.detach(), f_batch.detach()).mean()
-                    
-                loss = params.two_stage_reg_rate * loss_aug + (1-params.two_stage_reg_rate) * distance
-
-                optimizer.zero_grad() 
-                loss.backward() 
-                optimizer.step()
-
-                total_loss += loss.item()
-
-            train_loss = total_loss / support_batches
-            train_acc = correct / n_data
+                train_loss = total_loss / support_batches
+                train_acc = correct / n_data
 
             if params.ft_intermediate_test or epoch == n_epoch - 1:
                 body.eval()
@@ -497,7 +462,7 @@ def main(params):
             fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} valid_acc={:6.2f} test_acc={:6.2f}'
             print(fmt.format(episode, train_loss, train_acc_history[-1] * 100, valid_acc_history[-1] * 100, test_acc_history[-1] * 100))
         else: 
-            fmt = 'Stage 2 Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_acc={:6.2f}'
+            fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_acc={:6.2f}'
             print(fmt.format(episode, train_loss, train_acc_history[-1] * 100, test_acc_history[-1] * 100))
 
     fmt = 'Final Results: Acc={:5.2f} Std={:5.2f}'
