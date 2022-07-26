@@ -94,8 +94,11 @@ def parse_args(mode):
     parser.add_argument('--ft_scheduler_start', default=None, type=int, help="Write start epoch of augmentation. If you want no augmentation, make sure you set ft_scheduler_start == ft_scheduler_end")
     parser.add_argument('--ft_scheduler_end', default=None, type=int, help="Write end epoch of augmentation")
     parser.add_argument('--ft_EWC', action='store_true', help='To prevent catastrophic forgetting')
+
+    # regularizer
     parser.add_argument('--one_stage_reg', default=None, type=str, help = "Choose one of {aug_CE, clean_CE, both_CE}")
     parser.add_argument('--two_stage_reg_rate', default=0.9, type=float, help = "rate for aug_CE loss, (1-rate) will be for l1 regularizer term")
+    parser.add_argument('--ema', default=None, type=float, help = "f = ema * f + (1-ema) * f dash")
     
     # experiments 
     parser.add_argument('--v_score', action='store_true', help='save v measurement cluster store')

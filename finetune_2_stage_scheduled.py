@@ -376,6 +376,13 @@ def main(params):
                         distance = lam * l1_dist(f_clean_batch.detach(), f_batch.detach()).mean() + (1.-lam) * l1_dist(f_clean_batch_shuffled.detach(), f_batch.detach()).mean()
                         
                     loss = params.two_stage_reg_rate * loss_aug + (1-params.two_stage_reg_rate) * distance
+                    
+                    # ema
+                    # if params.ema is not None:
+                    #     for f, f_prime in zip(body_clean.named_parameters(), body.named_parameters()):
+                    #         if 'fc' not in f[0] and 'classifier' not in f[0]:
+                    #             moving_avg = params.ema * f[1].detach() + (1 - params.ema) * f_prime[1].detach()
+                    #             f[1] = moving_avg
 
                     optimizer.zero_grad() 
                     loss.backward() 
