@@ -54,7 +54,7 @@ def save_img(imgs, path):
 
 def body_forward(input, body, backbone, torch_pretrained, params):
     if torch_pretrained : 
-        output = backbone(input).squeeze(-1).squeeze(-1)
+        output = body.backbone(input).squeeze(-1).squeeze(-1)
     else:
         output = body.forward_features(input, params.ft_features)
     return output 

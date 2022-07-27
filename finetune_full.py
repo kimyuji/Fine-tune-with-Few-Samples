@@ -179,8 +179,8 @@ def main(params):
         if not torch_pretrained:
             body.load_state_dict(copy.deepcopy(state))  # note, override model.load_state_dict to change this behavior.
         else:
-            body = get_model_class(params.model)(backbone, params)
-
+            body = get_model_class(params.model)(copy.deepcopy(backbone), params)
+                           
         head = get_classifier_head_class(params.ft_head)(512, params.n_way, params)  # TODO: apply ft_features
 
         body.cuda()
