@@ -10,6 +10,7 @@ img_pdf/
 logs/
 .idea
 *.pt
+*.sh
 *.json
 feature/
 LICENSE
@@ -74,7 +75,6 @@ coverage.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
-configs.py
 
 # Translations
 *.mo
