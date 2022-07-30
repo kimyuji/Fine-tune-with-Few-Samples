@@ -155,7 +155,7 @@ def get_episodic_dataloader(dataset_name: str, n_way: int, n_shot: int, support:
 # o
 def get_labeled_episodic_dataloader(dataset_name: str, n_way: int, n_shot: int, support: bool, n_episodes=600,
                                     n_query_shot=15, n_epochs=1, augmentation: str = None, image_size: int = None,
-                                    unlabeled_ratio: int = 0, num_workers=2, split_seed=1, episode_seed=0, tta=False, eval_mode=None):
+                                    unlabeled_ratio: int = 0, num_workers=4, split_seed=1, episode_seed=0, tta=False, eval_mode=None):
     # dataset
     unlabeled, labeled = get_split_dataset(dataset_name, augmentation, image_size=image_size, siamese=False, tta=tta, eval_mode=eval_mode,
                                            unlabeled_ratio=unlabeled_ratio, seed=split_seed)
@@ -163,4 +163,4 @@ def get_labeled_episodic_dataloader(dataset_name: str, n_way: int, n_shot: int, 
     sampler = EpisodicBatchSampler(labeled, n_way=n_way, n_shot=n_shot, n_query_shot=n_query_shot,
                                    n_episodes=n_episodes, support=support, n_epochs=n_epochs, seed=episode_seed)
 
-    return torch.utils.data.DataLoader(labeled, num_workers=num_workers, batch_sampler=sampler)
+    return torch.utils.data.DataLoader(labeled, num_workers=num_workers, batch_sampler=sampler, pin_memory=True)

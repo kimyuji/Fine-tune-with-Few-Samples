@@ -5,7 +5,7 @@ import os
 import pickle
 import pandas as pd
 import torch.nn as nn
-import torchsummary as summary
+#import torchsummary as summary
 
 from backbone import get_backbone_class
 import backbone
@@ -45,7 +45,7 @@ def main(params):
     n_data = params.n_way * params.n_shot
     # if params.ft_with_clean:
     #     n_data = n_data*2
-    n_epoch = int( math.ceil(n_data / 4) * params.ft_epochs / math.ceil(n_data / bs) )
+    n_epoch = 100
     print()
     w = params.n_way
     s = params.n_shot
@@ -77,14 +77,6 @@ def main(params):
                                                    num_workers=params.num_workers,
                                                    split_seed=params.split_seed,
                                                    episode_seed=params.ft_episode_seed)
-    if params.ft_clean_test:
-        support_loader_clean = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=True,
-                                                     n_query_shot=q, n_episodes=n_episodes, n_epochs=support_epochs,
-                                                     augmentation=None,
-                                                     unlabeled_ratio=params.unlabeled_ratio,
-                                                     num_workers=params.num_workers,
-                                                     split_seed=params.split_seed, episode_seed=params.ft_episode_seed)
-        support_iterator_clean = iter(support_loader_clean)
 
     # 값이 맞게끔 보증! 
     assert (len(query_loader) == n_episodes)
@@ -192,7 +184,6 @@ def main(params):
 
         # Loss function
         criterion = nn.CrossEntropyLoss().cuda()
-        ewc = ElasticWeightConsolidation(head, criterion, optimizer)
 
         # no augmentation (Transform X)
             # x_support, y_support : episode마다 --> 절대 바뀌면 안됨
@@ -248,16 +239,6 @@ def main(params):
             if not use_fixed_features:
                 x_support_aug, _ = next(support_iterator) # augmented by loader
                 x_support_aug = x_support_aug.cuda() 
-                if params.ft_clean_test or params.ft_scheduler_end:
-                    x_support, _ = next(support_iterator_clean)
-                    x_support = x_support.cuda()
-                    with torch.no_grad():
-                        f_support_clean = body.forward_features(x_support, params.ft_features)
-                    # check if aug and clean imgs are the same 
-                    # with open(output_dir+'/output/img_{}.txt'.format(epoch), 'wb') as f :
-                    #     pickle.dump(x_support_aug, f)
-                    # with open(clean_path+'_{}.txt'.format(epoch), 'wb') as f :
-                    #     pickle.dump(x_support_clean, f)
                     
 
             total_loss = 0
@@ -334,13 +315,6 @@ def main(params):
             body.eval()
             head.eval()
 
-            # Test Using Clean Support
-            if params.ft_clean_test :
-                with torch.no_grad():
-                    pred_clean = head(f_support_clean)
-                train_acc_clean = torch.eq(y_support, pred_clean.argmax(dim=1)).sum() / n_data
-                train_acc_clean_history.append(train_acc_clean.item())
-
             # Test Using Query
             if params.ft_intermediate_test or epoch == n_epoch - 1:
                 with torch.no_grad():
@@ -372,13 +346,9 @@ def main(params):
         df_loss.loc[episode + 1] = train_loss_history
         #df_loss.to_csv(loss_history_path)
 
-        if params.ft_clean_test:
-            df_train_clean.loc[episode + 1] = train_acc_clean_history
-            fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} clean_acc={:6.2f} test_acc={:6.2f}'
-            print(fmt.format(episode, train_loss, train_acc_history[-1] * 100, train_acc_clean_history[-1] * 100, test_acc_history[-1] * 100))
-        else: 
-            fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_acc={:6.2f}'
-            print(fmt.format(episode, train_loss, train_acc_history[-1] * 100, test_acc_history[-1] * 100))
+
+        fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_acc={:6.2f}'
+        print(fmt.format(episode, train_loss, train_acc_history[-1] * 100, test_acc_history[-1] * 100))
 
     fmt = 'Final Results: Acc={:5.2f} Std={:5.2f}'
     print(fmt.format(df_test.mean()[-1] * 100, 1.96 * df_test.std()[-1] / np.sqrt(n_episodes) * 100))
@@ -389,8 +359,6 @@ def main(params):
     df_train.to_csv(train_history_path)
     df_test.to_csv(test_history_path)
     df_loss.to_csv(loss_history_path)
-    if params.ft_clean_test:
-        df_train_clean.to_csv(train_clean_history_path)
 
 
 if __name__ == '__main__':

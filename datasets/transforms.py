@@ -25,27 +25,30 @@ def parse_transform(transform: str, image_size=224, **transform_kwargs):
     elif transform == 'RandomRotation':
         return transforms.RandomRotation(degrees=10)
     elif transform == 'RandomResizedCrop':
-        return transforms.RandomResizedCrop(image_size, scale=(0.5, 0.5), ratio=(0.75, 0.75))
-
-    # Deterministic Augmentation
-    elif transform == 'RandomHorizontalFlip_fixed':
-        return transforms.RandomHorizontalFlip(p=1.0)
-    elif transform == 'RandomResizedCrop_fixed':
-        return transforms.RandomResizedCrop(image_size, scale=(0.5, 0.5), ratio=(0.75, 0.75))
+        return transforms.RandomResizedCrop(image_size) # careful,,
     
     # TTA
     elif transform == 'fixed_HFlip':
         return transforms.RandomHorizontalFlip(p=1.0)
-    elif transform == 'fixed_VFlip':
-        return transforms.RandomVerticalFlip(p=1.0)
-    elif transform == 'fixed_Rotate':
-        return transforms.RandomRotation(degrees=60)
+    # elif transform == 'fixed_VFlip':
+    #     return transforms.RandomVerticalFlip(p=1.0)
+    # elif transform == 'fixed_Rotate':
+    #     return transforms.RandomRotation(degrees=60)
     elif transform == 'fixed_RCrop':
         return transforms.RandomResizedCrop(image_size, scale = (0.1, 0.9))
-    # elif transform == 'TTA_GrayScale': # channel=1이 돼서 못씀
-    #     return transforms.Grayscale()
     elif transform == 'fixed_CJitter':
         return transforms.RandomApply([transforms.ColorJitter(0.5, 0.5, 0.5, 0.5)], p=1.0)
+        
+    # Aug Intensity
+    elif transform == 'RCrop_0.2':
+        return transforms.RandomResizedCrop(image_size, scale = (0.2, 0.2))
+    elif transform == 'RCrop_0.4':
+        return transforms.RandomResizedCrop(image_size, scale = (0.4, 0.4))
+    elif transform == 'RCrop_0.6':
+        return transforms.RandomResizedCrop(image_size, scale = (0.6, 0.6))
+    elif transform == 'RCrop_0.8':
+        return transforms.RandomResizedCrop(image_size, scale = (0.8, 0.8))
+
     elif transform == '':
         return
     else:
@@ -84,8 +87,10 @@ def get_composed_transform(augmentation: str = None, image_size=224) -> transfor
     elif augmentation == 'strong':
         transform_list = ['RandomResizedCrop', 'RandomColorJitter', 'RandomGrayscale', 'RandomGaussianBlur',
                           'RandomHorizontalFlip', 'ToTensor', 'Normalize']
+
     elif augmentation is None or augmentation.lower() == 'none':
         transform_list = ['Resize', 'ToTensor', 'Normalize'] # Resize필수!TT
+
     # analyze individually
     elif augmentation == 'randomresizedcrop':
         transform_list = ['RandomResizedCrop', 'ToTensor', 'Normalize']
@@ -93,16 +98,21 @@ def get_composed_transform(augmentation: str = None, image_size=224) -> transfor
         transform_list = ['RandomColorJitter', 'Resize', 'ToTensor', 'Normalize']
     elif augmentation == 'randomhorizontalflip':
         transform_list = ['RandomHorizontalFlip', 'Resize', 'ToTensor', 'Normalize']
-    elif augmentation == 'randomgrayscale':
-        transform_list = ['RandomGrayscale', 'Resize', 'ToTensor', 'Normalize']
-    elif augmentation == 'randomgaussianblur':
-        transform_list = ['RandomGaussianBlur', 'Resize', 'ToTensor', 'Normalize']
-    elif augmentation == 'flipcrop':
-        transform_list = ['RandomResizedCrop', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
-    elif augmentation == 'randomresizedcrop_fixed':
-        transform_list = ['RandomResizedCrop_fixed', 'ToTensor', 'Normalize']
-    elif augmentation == 'randomhorizontalflip_fixed':
-        transform_list = ['RandomHorizontalFlip_fixed', 'Resize', 'ToTensor', 'Normalize']
+    # elif augmentation == 'randomresizedcrop_fixed':
+    #     transform_list = ['RandomResizedCrop_fixed', 'ToTensor', 'Normalize']
+    # elif augmentation == 'randomhorizontalflip_fixed':
+    #     transform_list = ['RandomHorizontalFlip_fixed', 'Resize', 'ToTensor', 'Normalize']
+
+    # Intensity
+    elif augmentation == 'rcrop_0.2':
+        transform_list = ['RCrop_0.2', 'ToTensor', 'Normalize']
+    elif augmentation == 'rcrop_0.4':
+        transform_list = ['RCrop_0.4', 'ToTensor', 'Normalize']
+    elif augmentation == 'rcrop_0.6':
+        transform_list = ['RCrop_0.6', 'ToTensor', 'Normalize']
+    elif augmentation == 'rcrop_0.8':
+        transform_list = ['RCrop_0.8', 'ToTensor', 'Normalize']
+
     else:
         raise ValueError('Unsupported augmentation: {}'.format(augmentation))
 
