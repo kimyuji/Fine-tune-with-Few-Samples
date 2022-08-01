@@ -1,7 +1,8 @@
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = '1'
 import copy
 import json
 import math
-import os
 import pickle
 import pandas as pd
 import torch.nn as nn
@@ -29,9 +30,7 @@ from sklearn.metrics.cluster import v_measure_score
 def main(params):
     # ft_scheduler configuration 
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = params.gpu_idx
-    base_output_dir = get_output_directory(params) 
-    output_dir = get_ft_output_directory(params)
+    # os.environ["CUDA_VISIBLE_DEVICES"] = params.gpu_idx
     torch_pretrained = ("torch" in params.backbone)
     print()
     print('Running fine-tune with output folder:')
@@ -111,12 +110,12 @@ def main(params):
         train_history_path = train_history_path.replace('.csv', '_{}_{}.csv'.format(params.ft_scheduler_start, params.ft_scheduler_end))
         test_history_path = test_history_path.replace('.csv', '_{}_{}.csv'.format(params.ft_scheduler_start, params.ft_scheduler_end))
 
-    layer_path_l2 = train_history_path.replace('train_history', 'layer_diff_l2')
+    layer_path_l1 = train_history_path.replace('train_history', 'layer_diff_l1')
     layer_path_sub = train_history_path.replace('train_history', 'layer_diff_sub')
 
     params_path = get_ft_params_path(output_dir)
 
-    print('\nSaving layer difference output to {}'.format(layer_path_l2))
+    print('\nSaving layer difference output to {}'.format(layer_path_l1))
     #print('Saving finetune validation history to {}'.format(train_history_path))
     print()
     # saving parameters on this json file
@@ -159,7 +158,7 @@ def main(params):
         if 'fc' not in p[0]:
             layer_name.append(p[0])
     # 저장할 dataframe
-    df_layer_l2 = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
+    df_layer_l1 = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
                             columns=layer_name)
     df_layer_sub = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
                             columns=layer_name)
@@ -428,7 +427,7 @@ def main(params):
         body.cpu()
         pretrained.cpu()
         head.cpu()
-        layer_diff_l2 = []
+        layer_diff_l1 = []
         layer_diff_sub = []
 
         # layer diff L2 norm
@@ -436,15 +435,15 @@ def main(params):
             if 'fc' not in p[0] and 'classifier' not in p[0]:
                 lp_body = p[1].cpu().detach().numpy()
                 ft_body = b[1].cpu().detach().numpy()
-                layer_diff_l2.append(np.linalg.norm(lp_body-ft_body))
-                layer_diff_sub.append((np.abs(lp_body-ft_body) / np.abs(lp_body)).mean())
+                layer_diff_l1.append(np.abs(lp_body-ft_body).mean())
+                # layer_diff_sub.append((np.abs(lp_body-ft_body) / np.abs(lp_body)).mean())
         for r, c in zip(rand_init.named_parameters(), head.named_parameters()):
             lp_head = r[1].cpu().detach().numpy()
             ft_head = c[1].cpu().detach().numpy()
-            layer_diff_l2.append(np.linalg.norm(lp_head-ft_head))
-            layer_diff_sub.append((np.abs(lp_head-ft_head) / np.abs(lp_head)).mean())
-        df_layer_l2.loc[episode+1] = layer_diff_l2
-        df_layer_sub.loc[episode+1] = layer_diff_sub
+            layer_diff_l1.append(np.abs(lp_body-ft_body).mean())
+            # layer_diff_sub.append((np.abs(lp_head-ft_head) / np.abs(lp_head)).mean())
+        df_layer_l1.loc[episode+1] = layer_diff_l1
+        # df_layer_sub.loc[episode+1] = layer_diff_sub
 
         #print("Total iterations for {} epochs : {}".format(n_epoch, n_iter))
         fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_acc={:6.2f}'
@@ -456,8 +455,8 @@ def main(params):
 
 
     print('Saving layer difference ...')
-    df_layer_l2.to_csv(layer_path_l2)
-    df_layer_sub.to_csv(layer_path_sub)
+    df_layer_l1.to_csv(layer_path_l1)
+    # df_layer_sub.to_csv(layer_path_sub)
 
 
 if __name__ == '__main__':
