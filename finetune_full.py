@@ -1,7 +1,7 @@
+import os
 import copy
 import json
 import math
-import os
 import pickle
 from webbrowser import get
 import pandas as pd
@@ -24,7 +24,10 @@ from sklearn.cluster import KMeans
 from sklearn.metrics.cluster import v_measure_score
 
 def main(params):
-    os.environ["CUDA_VISIBLE_DEVICES"] = params.gpu_idx
+    # os.environ["CUDA_VISIBLE_DEVICES"] = params.gpu_idx
+    device = torch.device(f'cuda:{params.gpu_idx}' if torch.cuda.is_available() else 'cpu')
+    torch.cuda.set_device(device)
+    print(f"\nCurrently Using GPU {device}\n")
     base_output_dir = get_output_directory(params) 
     output_dir = get_ft_output_directory(params)
     torch_pretrained = ("torch" in params.backbone)
@@ -102,6 +105,13 @@ def main(params):
     valid_history_path = get_ft_valid_history_path(output_dir)
     test_history_path = get_ft_test_history_path(output_dir)
     support_v_score_history_path, query_v_score_history_path = get_ft_v_score_history_path(output_dir)
+    
+    if params.body_lr != 0.01:
+        train_history_path = train_history_path.replace('.csv', '_bodylr_{}.csv'.format(params.body_lr))
+        test_history_path = test_history_path.replace('.csv', '_bodylr_{}.csv'.format(params.body_lr))
+    if params.head_lr != 0.01:
+        train_history_path = train_history_path.replace('.csv', '_headlr_{}.csv'.format(params.head_lr))
+        test_history_path = test_history_path.replace('.csv', '_headlr_{}.csv'.format(params.head_lr))
 
     if params.ft_epochs != 100:
         train_history_path = train_history_path.replace('.csv', '_{}epochs.csv'.format(params.ft_epochs))
@@ -187,9 +197,9 @@ def main(params):
         head.cuda()
 
         opt_params = []
-        opt_params.append({'params': head.parameters()})
-        opt_params.append({'params': body.parameters()})
-        optimizer = torch.optim.SGD(opt_params, lr=params.ft_lr, momentum=0.9, dampening=0.9, weight_decay=0.001)
+        opt_params.append({'params': head.parameters(), 'lr': params.head_lr, 'momentum' : 0.9, 'dampening' : 0.9, 'weight_decay' : 0.001})
+        opt_params.append({'params': body.parameters(), 'lr': params.body_lr, 'momentum' : 0.9, 'dampening' : 0.9, 'weight_decay' : 0.001})
+        optimizer = torch.optim.SGD(opt_params)
 
         criterion = nn.CrossEntropyLoss().cuda()
 
