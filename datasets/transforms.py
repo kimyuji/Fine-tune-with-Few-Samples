@@ -41,26 +41,26 @@ def parse_transform(transform: str, image_size=224, **transform_kwargs):
         
     # Aug Intensity
     elif transform == 'RCrop_0.2':
-        return transforms.RandomResizedCrop(image_size, scale = (0.2, 1.0))
+        return transforms.RandomResizedCrop(image_size, scale = (0.2, 0.2))
     elif transform == 'RCrop_0.4':
-        return transforms.RandomResizedCrop(image_size, scale = (0.4, 1.0))
+        return transforms.RandomResizedCrop(image_size, scale = (0.4, 0.4))
     elif transform == 'RCrop_0.6':
-        return transforms.RandomResizedCrop(image_size, scale = (0.6, 1.0))
+        return transforms.RandomResizedCrop(image_size, scale = (0.6, 0.6))
     elif transform == 'RCrop_0.8':
-        return transforms.RandomResizedCrop(image_size, scale = (0.8, 1.0))
+        return transforms.RandomResizedCrop(image_size, scale = (0.8, 0.8))
     
+    elif transform == 'Rotate_10':
+        return transforms.RandomRotation((10, 10))
+    elif transform == 'Rotate_20':
+        return transforms.RandomRotation((20, 20))
+    elif transform == 'Rotate_30':
+        return transforms.RandomRotation((30, 30))
+    elif transform == 'Rotate_40':
+        return transforms.RandomRotation((40, 40))
+    elif transform == 'Rotate_50':
+        return transforms.RandomRotation((50, 50))
     elif transform == 'Rotate_60':
-        return transforms.RandomRotation(60)
-    elif transform == 'Rotate_120':
-        return transforms.RandomRotation(120)
-    elif transform == 'Rotate_180':
-        return transforms.RandomRotation(180)
-    elif transform == 'Rotate_240':
-        return transforms.RandomRotation(240)
-    elif transform == 'Rotate_300':
-        return transforms.RandomRotation(300)
-    elif transform == 'Rotate_360':
-        return transforms.RandomRotation(300)
+        return transforms.RandomRotation((60, 60))
 
     elif transform == '':
         return
@@ -107,7 +107,7 @@ def get_composed_transform(augmentation: str = None, image_size=224) -> transfor
     # analyze individually
     elif augmentation == 'randomresizedcrop':
         transform_list = ['RandomResizedCrop', 'ToTensor', 'Normalize']
-    elif augmentation == 'randomcoloredjitter':
+    elif augmentation == 'randomcolorjitter':
         transform_list = ['RandomColorJitter', 'Resize', 'ToTensor', 'Normalize']
     elif augmentation == 'randomhorizontalflip':
         transform_list = ['RandomHorizontalFlip', 'Resize', 'ToTensor', 'Normalize']
@@ -127,18 +127,18 @@ def get_composed_transform(augmentation: str = None, image_size=224) -> transfor
         transform_list = ['RCrop_0.8', 'ToTensor', 'Normalize']
         
     # Intensity
+    elif augmentation == 'rotate_10':
+        transform_list = ['Rotate_10', 'Resize', 'ToTensor', 'Normalize']
+    elif augmentation == 'rotate_20':
+        transform_list = ['Rotate_20', 'Resize', 'ToTensor', 'Normalize']
+    elif augmentation == 'rotate_30':
+        transform_list = ['Rotate_30', 'Resize', 'ToTensor', 'Normalize']
+    elif augmentation == 'rotate_40':
+        transform_list = ['Rotate_40', 'Resize', 'ToTensor', 'Normalize']
+    elif augmentation == 'rotate_50':
+        transform_list = ['Rotate_50', 'Resize', 'ToTensor', 'Normalize']
     elif augmentation == 'rotate_60':
         transform_list = ['Rotate_60', 'Resize', 'ToTensor', 'Normalize']
-    elif augmentation == 'rotate_120':
-        transform_list = ['Rotate_120', 'Resize', 'ToTensor', 'Normalize']
-    elif augmentation == 'rotate_180':
-        transform_list = ['Rotate_180', 'Resize', 'ToTensor', 'Normalize']
-    elif augmentation == 'rotate_240':
-        transform_list = ['Rotate_240', 'Resize', 'ToTensor', 'Normalize']
-    elif augmentation == 'rotate_300':
-        transform_list = ['Rotate_300', 'Resize', 'ToTensor', 'Normalize']
-    elif augmentation == 'rotate_360':
-        transform_list = ['Rotate_360', 'Resize', 'ToTensor', 'Normalize']
 
     else:
         raise ValueError('Unsupported augmentation: {}'.format(augmentation))
