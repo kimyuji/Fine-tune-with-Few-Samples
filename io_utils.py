@@ -68,7 +68,8 @@ def parse_args(mode):
     parser.add_argument('--ft_epochs', default=100, type=int)
     parser.add_argument('--ft_pretrain_epoch', default=None, type=int)
     parser.add_argument('--ft_batch_size', default=4, type=int) 
-    parser.add_argument('--ft_lr', default=0.01, type=float) 
+    parser.add_argument('--head_lr', default=0.01, type=float) 
+    parser.add_argument('--body_lr', default=0.01, type=float) 
     parser.add_argument('--ft_optimizer', default='SGD', type=str) 
     parser.add_argument('--ft_lr_scheduler', default=None, type=str) 
     
@@ -106,6 +107,8 @@ def parse_args(mode):
     parser.add_argument('--save_LP_FT_feat', action='store_true', help='save LP and FT features of query set')
     parser.add_argument('--ft_update_scheduler', default=None, type=str ,help="version : {LP-FT, body-FT, body-LP, LP-body}")
     parser.add_argument('--save_norm', action='store_true', help='save gradient norm of each layers')
+    
+    
     
     parser.add_argument('--save_succ_fail', default = False, type=bool)
     parser.add_argument('--check_perf', default = False, type=bool)

@@ -137,14 +137,10 @@ def get_ft_output_directory(params, makedirs=True, experiment=False):
     # if params.ft_batch_size != 4:
     #     path = get_output_directory(params, makedirs=makedirs).replace("output", "output_{:03d}".format(params.ft_batch_size))
     #     path = path.replace("baseline", "batch_size")
-    # if params.ft_parts != 'head':
-    #     path = get_output_directory(params, makedirs=makedirs).replace("baseline", "part_{}".format(params.ft_parts))
+
     if params.ft_optimizer != 'SGD':
         path = get_output_directory(params, makedirs=makedirs).replace("output", "output_{}".format(params.ft_optimizer))
         path = path.replace("baseline", "optimizer")
-    if params.ft_lr != 0.01 :
-        path = get_output_directory(params, makedirs=makedirs).replace("output", "output_{}".format(params.ft_lr))
-        path = path.replace("baseline", "learning_rate")
     if params.ft_lr_scheduler:
         path = get_output_directory(params, makedirs=makedirs).replace("output", "output_{}".format(params.ft_lr_scheduler))
         path = path.replace("baseline", "lr_scheduler")   
@@ -213,3 +209,4 @@ def get_ft_clean_history_path(output_directory):
 
 def get_ft_v_score_history_path(output_directory):
     return os.path.join(output_directory, 'v_score_support.csv'), os.path.join(output_directory, 'v_score_query.csv')
+

@@ -41,13 +41,26 @@ def parse_transform(transform: str, image_size=224, **transform_kwargs):
         
     # Aug Intensity
     elif transform == 'RCrop_0.2':
-        return transforms.RandomResizedCrop(image_size, scale = (0.2, 0.2))
+        return transforms.RandomResizedCrop(image_size, scale = (0.2, 1.0))
     elif transform == 'RCrop_0.4':
-        return transforms.RandomResizedCrop(image_size, scale = (0.4, 0.4))
+        return transforms.RandomResizedCrop(image_size, scale = (0.4, 1.0))
     elif transform == 'RCrop_0.6':
-        return transforms.RandomResizedCrop(image_size, scale = (0.6, 0.6))
+        return transforms.RandomResizedCrop(image_size, scale = (0.6, 1.0))
     elif transform == 'RCrop_0.8':
-        return transforms.RandomResizedCrop(image_size, scale = (0.8, 0.8))
+        return transforms.RandomResizedCrop(image_size, scale = (0.8, 1.0))
+    
+    elif transform == 'Rotate_60':
+        return transforms.RandomRotation(60)
+    elif transform == 'Rotate_120':
+        return transforms.RandomRotation(120)
+    elif transform == 'Rotate_180':
+        return transforms.RandomRotation(180)
+    elif transform == 'Rotate_240':
+        return transforms.RandomRotation(240)
+    elif transform == 'Rotate_300':
+        return transforms.RandomRotation(300)
+    elif transform == 'Rotate_360':
+        return transforms.RandomRotation(300)
 
     elif transform == '':
         return
@@ -112,6 +125,20 @@ def get_composed_transform(augmentation: str = None, image_size=224) -> transfor
         transform_list = ['RCrop_0.6', 'ToTensor', 'Normalize']
     elif augmentation == 'rcrop_0.8':
         transform_list = ['RCrop_0.8', 'ToTensor', 'Normalize']
+        
+    # Intensity
+    elif augmentation == 'rotate_60':
+        transform_list = ['Rotate_60', 'Resize', 'ToTensor', 'Normalize']
+    elif augmentation == 'rotate_120':
+        transform_list = ['Rotate_120', 'Resize', 'ToTensor', 'Normalize']
+    elif augmentation == 'rotate_180':
+        transform_list = ['Rotate_180', 'Resize', 'ToTensor', 'Normalize']
+    elif augmentation == 'rotate_240':
+        transform_list = ['Rotate_240', 'Resize', 'ToTensor', 'Normalize']
+    elif augmentation == 'rotate_300':
+        transform_list = ['Rotate_300', 'Resize', 'ToTensor', 'Normalize']
+    elif augmentation == 'rotate_360':
+        transform_list = ['Rotate_360', 'Resize', 'ToTensor', 'Normalize']
 
     else:
         raise ValueError('Unsupported augmentation: {}'.format(augmentation))
