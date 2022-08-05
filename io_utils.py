@@ -119,6 +119,8 @@ def parse_args(mode):
 
     # TTA options
     parser.add_argument('--ft_tta_mode', default=None, type=str, help='version : {"fixed_aug", "fixed_hflip", random_aug versions}')
+    parser.add_argument('--num_tta', default=1, type=int, help='the number of augmented samples aside from clean sample')
+    parser.add_argument('--include_clean', default=True, type=bool, help='whether to include clean sample for evaluation')
     
     # update layer options
     parser.add_argument('--upt_blocks', type=str, nargs='+')

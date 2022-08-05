@@ -16,8 +16,7 @@ from io_utils import parse_args
 from model import get_model_class
 from model.classifier_head import get_classifier_head_class
 from paths import get_output_directory, get_ft_output_directory, get_ft_train_history_path, get_ft_test_history_path, get_ft_valid_history_path, \
-    get_final_pretrain_state_path, get_pretrain_state_path, get_ft_params_path, get_ft_v_score_history_path, \
-    get_ft_loss_history_path
+    get_final_pretrain_state_path, get_pretrain_state_path, get_ft_params_path, get_ft_v_score_history_path, get_ft_test_tta_history_path, get_ft_loss_history_path
 from utils import *
 import time 
 from sklearn.cluster import KMeans 
@@ -73,37 +72,37 @@ def main(params):
                                                    unlabeled_ratio=0,
                                                    num_workers=params.num_workers,
                                                    split_seed=params.split_seed,
-                                                   episode_seed=params.ft_episode_seed,
-                                                   eval_mode=params.ft_tta_mode)
-
-    if params.ft_valid_mode:
-        valid_loader = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=True,
-                                                        n_query_shot=q, n_episodes=n_episodes, n_epochs=1,
-                                                        augmentation=None,
-                                                        unlabeled_ratio=0,
-                                                        num_workers=params.num_workers,
-                                                        split_seed=params.split_seed,
-                                                        episode_seed=params.ft_episode_seed,
-                                                        eval_mode=params.ft_valid_mode)
+                                                   episode_seed=params.ft_episode_seed)
+    if params.ft_augmentation:
+        query_tta_loader = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=False,
+                                                    n_query_shot=q, n_episodes=n_episodes, n_epochs=1,
+                                                    augmentation=None,
+                                                    unlabeled_ratio=0,
+                                                    num_workers=params.num_workers,
+                                                    split_seed=params.split_seed,
+                                                    episode_seed=params.ft_episode_seed,
+                                                    eval_opt=(params.ft_augmentation, params.num_tta, params.include_clean))
     else:
-        valid_loader = None
+        query_tta_loader = None
 
     assert (len(support_loader) == n_episodes * support_epochs)
     assert (len(query_loader) == n_episodes)
 
     support_iterator = iter(support_loader)
     support_batches = math.ceil(n_data / bs)
-    if valid_loader is not None:
-        valid_iterator = iter(valid_loader)
+
+    if query_tta_loader is not None:
+        query_tta_iterator = iter(query_tta_loader)
     else:
-        valid_iterator = None
+        query_tta_iterator = None
+
     query_iterator = iter(query_loader)
 
     # Output (history, params)
     train_history_path = get_ft_train_history_path(output_dir)
     loss_history_path = get_ft_loss_history_path(output_dir)
-    valid_history_path = get_ft_valid_history_path(output_dir)
     test_history_path = get_ft_test_history_path(output_dir)
+    test_tta_history_path = get_ft_test_tta_history_path(output_dir, params)
     support_v_score_history_path, query_v_score_history_path = get_ft_v_score_history_path(output_dir)
     
     if params.body_lr != 0.01:
@@ -122,12 +121,8 @@ def main(params):
 
     print('Saving finetune params to {}'.format(params_path))
     print('Saving finetune train history to {}'.format(train_history_path))
-    if params.ft_valid_mode:
-        valid_history_path = valid_history_path.replace(".csv", "_"+params.ft_valid_mode+".csv")
-        print('Saving finetune validation history to {}'.format(valid_history_path))
-    if params.ft_tta_mode:
-        test_history_path = test_history_path.replace(".csv", "_"+params.ft_tta_mode+".csv")
     print('Saving finetune test history to {}'.format(test_history_path))
+    print('Saving finetune TTA history to {}'.format(test_tta_history_path))
     print()
 
     # saving parameters on this json file
@@ -139,9 +134,11 @@ def main(params):
                             columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
     df_test = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
                            columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
+    df_test_tta = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
+                           columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
     df_loss = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
                            columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
-    df_valid = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
+    df_test_tta = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
                             columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
     df_v_score_support = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
                                      columns=['epoch{}'.format(e+1) for e in range(n_epoch)])
@@ -208,29 +205,17 @@ def main(params):
         y_support = torch.arange(w).repeat_interleave(s).cuda() # 각 요소를 반복 [000001111122222....]
         y_support_np = y_support.cpu().numpy()
 
-        if valid_iterator is not None:
-            f_valid = None
-            y_valid = torch.arange(w).repeat_interleave(s).cuda()
-            y_valid_np = y_valid.cpu().numpy()
-            if 'fixed' in params.ft_valid_mode :
-                x_valid = torch.cat(next(valid_iterator)[0]).cuda()
-                y_valid = torch.cat([y_valid]*(len(x_valid)//len(y_valid)), dim=0)
-            else:
-                x_valid = next(valid_iterator)[0].cuda()
-
-        if params.ft_tta_mode and 'fixed' in params.ft_tta_mode :
-                x_query = torch.cat(next(query_iterator)[0]).cuda()
-        else:
-            x_query = next(query_iterator)[0].cuda()
+        x_query = next(query_iterator)[0].cuda()
+        if params.ft_augmentation :  x_query_tta = torch.cat(next(query_tta_iterator)[0]).cuda()
 
         y_query = torch.arange(w).repeat_interleave(q).cuda() 
         f_query = None
         y_query_np = y_query.cpu().numpy()
-        num_aug = len(x_query)//len(y_query)
+        num_tta_samples = len(x_query_tta)//len(y_query) # should be params.num_tta + 1 or params.num_tta
         
         train_acc_history = []
         train_loss_history = []
-        valid_acc_history = []
+        test_tta_acc_history = []
         test_acc_history = []
         support_v_score = []
         query_v_score = []
@@ -241,8 +226,6 @@ def main(params):
 
         with torch.no_grad():
             f_query = body_forward(x_query, body, backbone, torch_pretrained, params)
-            if params.ft_tta_mode and 'fixed' in params.ft_tta_mode :
-                f_query = torch.mean(torch.cat(torch.chunk(f_query.unsqueeze(0), num_aug, dim=1), axis=0), axis=0)
             f_query_np = f_query.cpu().numpy()
             kmeans = KMeans(n_clusters = w)
             cluster_pred = kmeans.fit(f_query_np).labels_
@@ -350,15 +333,6 @@ def main(params):
             if params.ft_intermediate_test or epoch == n_epoch - 1:
                 body.eval()
                 head.eval()
-                # Validation Set Evaluation
-                if params.ft_valid_mode:
-                    with torch.no_grad():
-                        f_valid = body_forward(x_valid, body, backbone, torch_pretrained, params)
-                        pred = head(f_valid)
-                        correct = torch.eq(y_valid, pred.argmax(dim=1)).sum()
-                    valid_acc = correct / pred.shape[0]
-                else:
-                    valid_acc = torch.tensor(0)
 
                 # V-measure support
                 # if params.v_score and params.n_shot != 1:
@@ -374,10 +348,22 @@ def main(params):
                     # f_support = body_forward(x_clean_support, body, backbone, torch_pretrained, params)                  
                     f_query = body_forward(x_query, body, backbone, torch_pretrained, params)
                     pred = head(f_query)
-                    if params.ft_tta_mode and 'fixed' in params.ft_tta_mode :
-                        pred = torch.mean(torch.cat(torch.chunk(pred.unsqueeze(0), num_aug, dim=1), axis=0), axis=0)
+                    # if params.ft_tta_mode and 'fixed' in params.ft_tta_mode :
+                    #     pred = torch.mean(torch.cat(torch.chunk(pred.unsqueeze(0), num_tta_samples, dim=1), axis=0), axis=0)
                     correct = torch.eq(y_query, pred.argmax(dim=1)).sum()
                 test_acc = correct / pred.shape[0]
+
+                # TTA
+                if params.ft_augmentation:
+                    with torch.no_grad():      
+                        # f_support = body_forward(x_clean_support, body, backbone, torch_pretrained, params)                  
+                        f_query_tta = body_forward(x_query_tta, body, backbone, torch_pretrained, params)
+                        pred_tta = head(f_query_tta)
+                        pred_tta = torch.mean(torch.cat(torch.chunk(pred_tta.unsqueeze(0), num_tta_samples, dim=1), axis=0), axis=0)
+                        correct = torch.eq(y_query, pred.argmax(dim=1)).sum()
+                    test_tta_acc = correct / pred_tta.shape[0]
+                else : test_tta_acc = torch.tensor(0)
+
                 # Query V-measure
                 if params.v_score:
                     f_query = f_query.cpu().numpy()
@@ -385,7 +371,7 @@ def main(params):
                     cluster_pred = kmeans.fit(f_query).labels_
                     query_v_score.append(v_measure_score(cluster_pred, y_query_np))
             else:
-                valid_acc = torch.tensor(0)
+                test_tta_acc = torch.tensor(0)
                 test_acc = torch.tensor(0)
                 support_v_score.append(0.0)
                 query_v_score.append(0.0)
@@ -396,7 +382,7 @@ def main(params):
                 print(fmt.format(epoch + 1, train_loss, train_acc, test_acc))
 
             train_acc_history.append(train_acc.item())
-            valid_acc_history.append(valid_acc.item())
+            test_tta_acc_history.append(test_tta_acc.item())
             test_acc_history.append(test_acc.item())
             train_loss_history.append(train_loss)
 
@@ -407,9 +393,9 @@ def main(params):
         df_loss.loc[episode + 1] = train_loss_history
         df_loss.to_csv(loss_history_path)
 
-        if params.ft_valid_mode:
-            df_valid.loc[episode + 1] = valid_acc_history
-            df_valid.to_csv(valid_history_path)
+        if params.ft_augmentation:
+            df_test_tta.loc[episode + 1] = test_tta_acc_history
+            df_test_tta.to_csv(test_tta_history_path)
 
         if params.v_score:
             if params.n_shot != 1:
@@ -418,10 +404,10 @@ def main(params):
             df_v_score_query.loc[episode + 1] = query_v_score
             df_v_score_query.to_csv(query_v_score_history_path)
 
-        if params.ft_valid_mode:
-            df_valid.loc[episode + 1] = valid_acc_history
-            fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} valid_acc={:6.2f} test_acc={:6.2f}'
-            print(fmt.format(episode, train_loss, train_acc_history[-1] * 100, valid_acc_history[-1] * 100, test_acc_history[-1] * 100))
+        if params.ft_augmentation:
+            df_test_tta.loc[episode + 1] = test_tta_acc_history
+            fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_tta_acc={:6.2f} test_acc={:6.2f}'
+            print(fmt.format(episode, train_loss, train_acc_history[-1] * 100, test_tta_acc_history[-1] * 100, test_acc_history[-1] * 100))
         else: 
             fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_acc={:6.2f}'
             print(fmt.format(episode, train_loss, train_acc_history[-1] * 100, test_acc_history[-1] * 100))
@@ -436,8 +422,8 @@ def main(params):
     df_train.to_csv(train_history_path)
     df_test.to_csv(test_history_path)
     df_loss.to_csv(loss_history_path)
-    if params.ft_valid_mode:
-        df_valid.to_csv(valid_history_path)
+    if params.ft_augmentation:
+        df_test_tta.to_csv(test_tta_history_path)
     print("\nIt took {:6.2f} min to finish current training\n".format((end-start)/60))
 
 if __name__ == '__main__':

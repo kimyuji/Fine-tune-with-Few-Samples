@@ -198,6 +198,12 @@ def get_ft_train_history_path(output_directory):
 def get_ft_test_history_path(output_directory):
     return os.path.join(output_directory, 'test_history.csv')
 
+def get_ft_test_tta_history_path(output_directory, params):
+    if params.include_clean : clean = "_clean" 
+    else: clean = ""
+    
+    return os.path.join(output_directory, f'test_history_tta_{params.num_tta}{clean}.csv')
+
 def get_ft_valid_history_path(output_directory):
     return os.path.join(output_directory, 'valid_history.csv')
 
