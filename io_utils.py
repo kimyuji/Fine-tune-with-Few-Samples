@@ -120,6 +120,8 @@ def parse_args(mode):
     # TTA options
     parser.add_argument('--ft_tta_mode', default=None, type=str, help='version : {"fixed_aug", "fixed_hflip", random_aug versions}')
     
+    # update layer options
+    parser.add_argument('--upt_blocks', type=str, nargs='+')
 
     if mode == 'train' or mode == 'pretrain':
         parser.add_argument('--num_classes' , default=200, type=int, help='total number of classes in softmax, only used in baseline') #make it larger than the maximum label value in base class
