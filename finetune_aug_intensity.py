@@ -31,7 +31,7 @@ def main(params):
     output_dir = get_ft_output_directory(params)
     torch_pretrained = ("torch" in params.backbone)
 
-    
+    assert (params.ft_augmentation is not None)
 
     print('Running fine-tune with output folder:')
     print(output_dir)
@@ -57,9 +57,14 @@ def main(params):
         aug_type = "rcrop_"
         aug_intensity = [0.2, 0.4, 0.6, 0.8]
     
-    elif params.ft_augmentation == "randomrotate":
-        aug_type = "rotate_"
-        aug_intensity = [60, 120, 180, 240, 300, 360]
+    elif params.ft_augmentation == "base":
+        aug_type = "base_"
+        aug_intensity = [1, 2, 3, 4]
+        
+    elif params.ft_augmentation == "randomcolorjitter":
+        aug_type = "cjitter_"
+        aug_intensity = [0.2, 0.6, 0.8, 1.0]
+        
     num_intensity = len(aug_intensity)
     
     for intensity in aug_intensity:
@@ -138,8 +143,7 @@ def main(params):
                                                     unlabeled_ratio=0,
                                                     num_workers=params.num_workers,
                                                     split_seed=params.split_seed,
-                                                    episode_seed=params.ft_episode_seed,
-                                                    eval_mode=params.ft_tta_mode)
+                                                    episode_seed=params.ft_episode_seed)
 
         assert (len(support_loader) == n_episodes * support_epochs)
         assert (len(query_loader) == n_episodes)

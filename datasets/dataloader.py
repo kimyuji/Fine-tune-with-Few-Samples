@@ -33,24 +33,21 @@ class ToSiamese:
         return self.transform(img), self.transform2(img)
 
 class TTA_Augmentation:
-    def __init__(self, aug_mode, num_tta, include_clean):
+    def __init__(self, aug_mode):
         self.aug_mode = aug_mode
-        self.num_tta = num_tta
-        self.include_clean = include_clean
-    def __call__(self, img):
-        self.augmented_imgs = []
-        if self.include_clean:
-            self.augmented_imgs.append(get_composed_transform(None)(img))
-        else:
-            pass
-        for i in range(self.num_tta):
-            self.augmented_imgs.append(get_composed_transform(self.aug_mode)(img))
-        #self.augmented_imgs = torch.cat(self.augmented_imgs, dim=0)
 
-        return self.augmented_imgs # return as list
+    def __call__(self, img):
+        # include clean
+        self.augmented_imgs = []
+        self.augmented_imgs.append(get_composed_transform(None)(img))
+        # include aug
+        for i in range(31):
+            self.augmented_imgs.append(get_composed_transform(self.aug_mode)(img))
+
+        return self.augmented_imgs # return as a list including lists
 
 # o
-def get_default_dataset(dataset_name: str, augmentation: str, image_size: int = None, siamese=False, tta=False, eval_opt=None):
+def get_default_dataset(dataset_name: str, augmentation: str, image_size: int = None, siamese=False, tta=False):
     """
     :param augmentation: One of {'base', 'strong', None, 'none'}
     """
@@ -62,27 +59,10 @@ def get_default_dataset(dataset_name: str, augmentation: str, image_size: int = 
         dataset_cls = dataset_class_map[dataset_name] 
     except KeyError as e: 
         raise ValueError('Unsupported dataset: {}'.format(dataset_name)) 
-
-    # transform configuration (tta, siamse)
-    # if tta:
-    #     aug_list = ['TTA_HFlip', 'TTA_RCrop', 'TTA_CJitter']
-    #     transform_list = get_tta_transform(aug_list, image_size = image_size)
-    #     transform = TestTimeAugmentation(transform_list)
-    if eval_opt[0] is not None:
-        # if 'fixed' in eval_opt:
-        #     if eval_opt == 'fixed_aug':
-        #         aug_list = ['fixed_HFlip', 'fixed_RCrop', 'fixed_CJitter']
-        #     elif eval_opt == 'fixed_hflip':
-        #         aug_list = ['fixed_HFlip']
-        #     transform_list = get_fixed_transform_with_clean(aug_list, image_size = image_size)
-        transform = TTA_Augmentation(eval_opt[0], eval_opt[1], eval_opt[2])
-        # else:
-            # transform = get_composed_transform(augmentation)
-            # if siamese:
-            #     transform = ToSiamese(transform)
-    # elif eval_opt == 'clean':
-    #     transform = get_composed_transform(None)
-    else : # includes (eval_opt == 'random_aug')
+        
+    if tta: # if TTA
+        transform = TTA_Augmentation(augmentation)
+    else : 
         transform = get_composed_transform(augmentation)
         if siamese:
             transform = ToSiamese(transform)
@@ -90,13 +70,13 @@ def get_default_dataset(dataset_name: str, augmentation: str, image_size: int = 
     return dataset_cls(transform=transform)
 
 # o
-def get_split_dataset(dataset_name: str, augmentation: str, image_size: int = None, siamese=False, tta=False, eval_opt=None,
-                      unlabeled_ratio: int = 20, seed=1):
+def get_split_dataset(dataset_name: str, augmentation: str, image_size: int = None, siamese=False, tta=False,
+                      unlabeled_ratio: int = 0, seed=1):
     # If cache details change, just remove the cache – it's not worth the maintenance TBH.
-    cache_key = (dataset_name, augmentation, image_size, siamese, tta, eval_opt, unlabeled_ratio)
+    cache_key = (dataset_name, augmentation, image_size, siamese, unlabeled_ratio, tta)
     if cache_key not in _unlabeled_dataset_cache:
         dataset = get_default_dataset(dataset_name=dataset_name, augmentation=augmentation, image_size=image_size,
-                                      siamese=siamese, tta=tta, eval_opt=eval_opt)
+                                      siamese=siamese, tta=tta)
         unlabeled, labeled = split_dataset(dataset, ratio=unlabeled_ratio, seed=seed)
         
         # Cross-reference so that strong ref persists if either split is currently referenced
@@ -161,9 +141,9 @@ def get_episodic_dataloader(dataset_name: str, n_way: int, n_shot: int, support:
 # o
 def get_labeled_episodic_dataloader(dataset_name: str, n_way: int, n_shot: int, support: bool, n_episodes=600,
                                     n_query_shot=15, n_epochs=1, augmentation: str = None, image_size: int = None,
-                                    unlabeled_ratio: int = 0, num_workers=4, split_seed=1, episode_seed=0, tta=False, eval_opt: tuple = (None, None, None)):
+                                    unlabeled_ratio: int = 0, num_workers=4, split_seed=1, episode_seed=0, tta=False):
     # dataset
-    unlabeled, labeled = get_split_dataset(dataset_name, augmentation, image_size=image_size, siamese=False, tta=tta, eval_opt=eval_opt,
+    unlabeled, labeled = get_split_dataset(dataset_name, augmentation, image_size=image_size, siamese=False, tta=tta,
                                            unlabeled_ratio=unlabeled_ratio, seed=split_seed)
     # sampler
     sampler = EpisodicBatchSampler(labeled, n_way=n_way, n_shot=n_shot, n_query_shot=n_query_shot,

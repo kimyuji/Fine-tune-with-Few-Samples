@@ -89,21 +89,6 @@ def main(params):
     # Output (history, params)
     train_history_path = get_ft_train_history_path(output_dir)
     test_history_path = get_ft_test_history_path(output_dir)
-
-    if params.ft_augmentation:
-        train_history_path = train_history_path.replace('.csv', '_{}.csv'.format(params.ft_augmentation))
-        test_history_path = test_history_path.replace('.csv', '_{}.csv'.format(params.ft_augmentation))
-    if params.ft_manifold_aug:
-        train_history_path = train_history_path.replace('.csv', '_{}.csv'.format(params.ft_manifold_aug))
-        test_history_path = test_history_path.replace('.csv', '_{}.csv'.format(params.ft_manifold_aug))
-    if params.ft_label_smoothing != 0:
-        train_history_path = train_history_path.replace('.csv', '_ls.csv')
-        test_history_path = test_history_path.replace('.csv', '_ls.csv')
-
-    if params.ft_scheduler_start != params.ft_scheduler_end:
-        train_history_path = train_history_path.replace('.csv', '_{}_{}.csv'.format(params.ft_scheduler_start, params.ft_scheduler_end))
-        test_history_path = test_history_path.replace('.csv', '_{}_{}.csv'.format(params.ft_scheduler_start, params.ft_scheduler_end))
-
     loss_history_path = train_history_path.replace('train_history', 'loss_history')
     train_clean_history_path = test_history_path.replace('test_history', 'clean_history')
     params_path = get_ft_params_path(output_dir)
@@ -129,20 +114,21 @@ def main(params):
     #                        columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
 
     # Pre-train state
-    
-    if not torch_pretrained : 
+    if not torch_pretrained:
         if params.ft_pretrain_epoch is None: # best state
             body_state_path = get_final_pretrain_state_path(base_output_dir)
-        else: # 원하는 epoch수의 state를 받아오고 싶다면 
-            body_state_path = get_pretrain_state_path(base_output_dir, params.ft_pretrain_epoch)
-            
+        
+        if params.source_dataset == 'tieredImageNet':
+            body_state_path = './logs/baseline/output/pretrained_model/tiered/resnet18_base_LS_base/pretrain_state_0090.pt'
+
         if not os.path.exists(body_state_path):
             raise ValueError('Invalid pre-train state path: ' + body_state_path)
-            
-        print('Using pre-train state:')
-        print(body_state_path)
+
+        print('Using pre-train state:', body_state_path)
         print()
         state = torch.load(body_state_path)
+    else:
+        pass
 
     for episode in range(n_episodes):
         # Reset models for each episode
@@ -152,6 +138,9 @@ def main(params):
                                                          params)  # TODO: apply ft_features
         body.cuda()
         head.cuda()
+        
+        body.eval()
+        head.train()
 
         opt_params = []
         if params.ft_train_head:
@@ -161,27 +150,8 @@ def main(params):
 
         # Optimizer and Learning Rate Scheduler
         # select optimizer
-        if params.ft_optimizer == 'SGD':
-            optimizer = torch.optim.SGD(opt_params, lr=params.ft_lr, momentum=0.9, dampening=0.9, weight_decay=0.001)
-        elif params.ft_optimizer == 'Adam':
-            optimizer = torch.optim.Adam(opt_params, lr=params.ft_lr, weight_decay=0.001)
-        elif params.ft_optimizer == 'RMSprop':
-            optimizer = torch.optim.RMSprop(opt_params, lr=params.ft_lr, momentum=0.9, weight_decay=0.001)
-        elif params.ft_optimizer == 'Adagrad':
-            optimizer = torch.optim.Adagrad(opt_params, lr=params.ft_lr, weight_decay=0.001)
-        elif params.ft_optimizer == 'RMSprop_no_momentum':
-            optimizer = torch.optim.RMSprop(opt_params, lr=params.ft_lr, weight_decay=0.001)
-
-        # select learning rate scheduler
-        if params.ft_lr_scheduler == "CosAnneal":
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50) # T_max : 최대 iteration 횟수
-        elif params.ft_lr_scheduler == "CosAnneal_WS":
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=1)
-        elif params.ft_lr_scheduler == "Cycle":
-            scheduler = torch.optim.lr_scheduler.CyclicLR(optimizer, base_lr=0, step_size_up=5, max_lr=0.03, gamma=0.5, mode='exp_range')
-        elif params.ft_lr_scheduler == 'Exp':
-            scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.5)
-
+        optimizer = torch.optim.SGD(opt_params, lr=0.01, momentum=0.9, dampening=0.9, weight_decay=0.001)
+            
         # Loss function
         criterion = nn.CrossEntropyLoss().cuda()
 
@@ -224,11 +194,6 @@ def main(params):
         train_loss_history = []
 
         for epoch in range(n_epoch):
-
-            # Train
-            body.train()
-            head.train()
-            
             # 4 augmentation methods : mixup, cutmix, manifold, augmentation(transform)
             # mixup, cutmix, manifold mixup need 2 labels <- mix_bool == True
             mix_bool = (params.ft_mixup or params.ft_cutmix or params.ft_manifold_mixup) 
@@ -250,16 +215,12 @@ def main(params):
             if aug_bool:
                 if mix_bool:
                     x_support_aug = copy.deepcopy(x_support)
-                    lam = np.random.beta(1.0, 1.0) # 어차피 Uniform sampling 
-                    # lam = np.random.uniform(0.4, 0.6)
-                    # lam = np.random.choice([np.random.uniform(0, 0.2),np.random.uniform(0.8, 1.0)], p=0.5)
-                    #lam = 0.5 # fix
+                    lam = np.random.beta(1.0, 1.0) 
                     bbx1, bby1, bbx2, bby2 = rand_bbox(x_support.shape, lam)
                     indices_shuffled = torch.randperm(x_support.shape[0])
-                    #indices_shuffled = torch.tensor([0,1,2,4,3]) # fix
                     y_shuffled = y_support[indices_shuffled] 
 
-                    if params.ft_cutmix: # recalculate ratio of img b by its area
+                    if params.ft_cutmix: 
                         x_support_aug[:,:,bbx1:bbx2, bby1:bby2] = x_support[indices_shuffled,:,bbx1:bbx2, bby1:bby2]
                         lam = 1 - ((bbx2 - bbx1) * (bby2 - bby1) / (x_support.shape[-1] * x_support.shape[-2])) # adjust lambda
                     elif params.ft_mixup:
@@ -270,8 +231,6 @@ def main(params):
                         f_support = backbone(x_support_aug).squeeze(-1).squeeze(-1)
                     else:
                         f_support = body.forward_features(x_support_aug, params.ft_features)
-                        # with open(output_dir+'/output/img_{}.txt'.format(epoch), 'wb') as f :
-                        #     pickle.dump(x_support_aug, f)
             else : 
                 f_support = f_support_clean
 
@@ -296,9 +255,6 @@ def main(params):
                     loss = criterion(pred, y_batch) * lam + criterion(pred, y_shuffled_batch) * (1. - lam)
                 else:
                     loss = criterion(pred, y_batch)
-                
-                if params.ft_EWC:
-                    loss = loss + ewc._compute_consolidation_loss(1000000)
 
                 optimizer.zero_grad() # pytorch에서는 이걸 안해주면 gradient를 계속 누적함 (각 Iteration이 끝나면 초기화해줌)
                 loss.backward()
@@ -340,11 +296,11 @@ def main(params):
 
         #print("Total iterations for {} epochs : {}".format(n_epoch, n_iter))
         df_train.loc[episode + 1] = train_acc_history
-        #df_train.to_csv(train_history_path)
+        df_train.to_csv(train_history_path)
         df_test.loc[episode + 1] = test_acc_history
-        #df_test.to_csv(test_history_path)
+        df_test.to_csv(test_history_path)
         df_loss.loc[episode + 1] = train_loss_history
-        #df_loss.to_csv(loss_history_path)
+        df_loss.to_csv(loss_history_path)
 
 
         fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_acc={:6.2f}'

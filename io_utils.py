@@ -82,8 +82,6 @@ def parse_args(mode):
     # option for training
     parser.add_argument('--ft_valid_mode', default = None, type=str, help ='{random_aug versions, "fixed_aug", "clean"}')
     parser.add_argument('--ft_train_with_clean', action='store_true', help="{This option is only available on full update with augmentation used} train augmented imgs with original imgs")
-    parser.add_argument('--ft_no_pretrain', action='store_true', help="if true, pretrained parts are random initialized")
-
     # augmentation options
     parser.add_argument('--ft_augmentation', default=None, type=str, help="Augmentation used for fine-tuning {None, 'base', 'strong', 'RandomHorizontalFlip'}")
     parser.add_argument('--ft_manifold_aug', default = None, type = str, help="select version : {'v1', 'v2', 'v3', 'adaptive'}")
@@ -120,7 +118,7 @@ def parse_args(mode):
     # TTA options
     parser.add_argument('--ft_tta_mode', default=None, type=str, help='version : {"fixed_aug", "fixed_hflip", random_aug versions}')
     parser.add_argument('--num_tta', default=1, type=int, help='the number of augmented samples aside from clean sample')
-    parser.add_argument('--include_clean', default=True, type=bool, help='whether to include clean sample for evaluation')
+    parser.add_argument('--include_clean', default=False, type=bool, help='whether to include clean sample for evaluation')
     
 
     if mode == 'train' or mode == 'pretrain':
@@ -154,7 +152,7 @@ def parse_args(mode):
         parser.add_argument('--reset_layer_method', default='rerandomize', help='rerandomize, reinit')
         parser.add_argument('--unlabeled_stats', action='store_true', help ='Use statistics of unlabeled target dataset for BN running stats')
 
-        parser.add_argument('--finetune_parts', default=None, type=str, help='head, body, full')
+        parser.add_argument('--finetune_parts', default=None, type=str, help='head, body, full, scratch')
         parser.add_argument('--fusion_method', default=None, type=str, help='concat, etc, ...')
 
         parser.add_argument('--no_tracking', action='store_true', help='No tracking the test accuracy for every epoch')
@@ -186,7 +184,7 @@ def parse_args(mode):
         raise AssertionError('Namgyu thinks there is a problem with params.reinit_bn_stats. Plz consult.')
     if params.ut and not params.target_dataset:
         raise AssertionError('Invalid parameter combination')
-    if params.ft_parts not in ["head", "body", "full"]:
+    if params.ft_parts not in ["head", "body", "full", "scratch"]:
         raise AssertionError('Invalid params.ft_parts: {}'.format(params.ft_parts))
     if params.ft_parts=='head' and params.v_score:
         raise AssertionError('finetune parts should be either body or full in ordr to calculate vscore')
@@ -237,8 +235,8 @@ def parse_args(mode):
             params.lr = 0.1
         print("Using default lr for model {}: {}".format(params.model, params.lr))
 
-    params.ft_train_body = params.ft_parts in ['body', 'full']
-    params.ft_train_head = params.ft_parts in ['head', 'full']
+    params.ft_train_body = params.ft_parts in ['body', 'full', 'scratch']
+    params.ft_train_head = params.ft_parts in ['head', 'full', 'scratch']
 
     if params.pls_tag is None:
         params.pls_tag = params.tag

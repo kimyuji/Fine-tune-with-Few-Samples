@@ -27,17 +27,6 @@ def parse_transform(transform: str, image_size=224, **transform_kwargs):
     elif transform == 'RandomResizedCrop':
         return transforms.RandomResizedCrop(image_size) # careful,,
     
-    # TTA
-    elif transform == 'fixed_HFlip':
-        return transforms.RandomHorizontalFlip(p=1.0)
-    # elif transform == 'fixed_VFlip':
-    #     return transforms.RandomVerticalFlip(p=1.0)
-    # elif transform == 'fixed_Rotate':
-    #     return transforms.RandomRotation(degrees=60)
-    elif transform == 'fixed_RCrop':
-        return transforms.RandomResizedCrop(image_size, scale = (0.1, 0.9))
-    elif transform == 'fixed_CJitter':
-        return transforms.RandomApply([transforms.ColorJitter(0.5, 0.5, 0.5, 0.5)], p=1.0)
         
     # Aug Intensity
     elif transform == 'RCrop_0.2':
@@ -61,7 +50,17 @@ def parse_transform(transform: str, image_size=224, **transform_kwargs):
         return transforms.RandomRotation((50, 50))
     elif transform == 'Rotate_60':
         return transforms.RandomRotation((60, 60))
+    
+    elif transform == 'CJitter_0.2':
+        return transforms.RandomApply([transforms.ColorJitter(0.2, 0.2, 0.2, 0.0)], p=1.0)
+    elif transform == 'CJitter_0.6':
+        return transforms.RandomApply([transforms.ColorJitter(0.6, 0.6, 0.6, 0.0)], p=1.0)
+    elif transform == 'CJitter_0.8':
+        return transforms.RandomApply([transforms.ColorJitter(0.8, 0.8, 0.8, 0.0)], p=1.0)
+    elif transform == 'CJitter_1.0':
+        return transforms.RandomApply([transforms.ColorJitter(1.0, 1.0, 1.0, 0.0)], p=1.0)
 
+    
     elif transform == '':
         return
     else:
@@ -111,10 +110,6 @@ def get_composed_transform(augmentation: str = None, image_size=224) -> transfor
         transform_list = ['RandomColorJitter', 'Resize', 'ToTensor', 'Normalize']
     elif augmentation == 'randomhorizontalflip':
         transform_list = ['RandomHorizontalFlip', 'Resize', 'ToTensor', 'Normalize']
-    # elif augmentation == 'randomresizedcrop_fixed':
-    #     transform_list = ['RandomResizedCrop_fixed', 'ToTensor', 'Normalize']
-    # elif augmentation == 'randomhorizontalflip_fixed':
-    #     transform_list = ['RandomHorizontalFlip_fixed', 'Resize', 'ToTensor', 'Normalize']
 
     # Intensity
     elif augmentation == 'rcrop_0.2':
@@ -126,19 +121,24 @@ def get_composed_transform(augmentation: str = None, image_size=224) -> transfor
     elif augmentation == 'rcrop_0.8':
         transform_list = ['RCrop_0.8', 'ToTensor', 'Normalize']
         
-    # Intensity
-    elif augmentation == 'rotate_10':
-        transform_list = ['Rotate_10', 'Resize', 'ToTensor', 'Normalize']
-    elif augmentation == 'rotate_20':
-        transform_list = ['Rotate_20', 'Resize', 'ToTensor', 'Normalize']
-    elif augmentation == 'rotate_30':
-        transform_list = ['Rotate_30', 'Resize', 'ToTensor', 'Normalize']
-    elif augmentation == 'rotate_40':
-        transform_list = ['Rotate_40', 'Resize', 'ToTensor', 'Normalize']
-    elif augmentation == 'rotate_50':
-        transform_list = ['Rotate_50', 'Resize', 'ToTensor', 'Normalize']
-    elif augmentation == 'rotate_60':
-        transform_list = ['Rotate_60', 'Resize', 'ToTensor', 'Normalize']
+    elif augmentation == 'cjitter_0.2':
+        transform_list = ['CJitter_0.2', 'Resize', 'ToTensor', 'Normalize']
+    elif augmentation == 'cjitter_0.6':
+        transform_list = ['CJitter_0.6', 'Resize', 'ToTensor', 'Normalize']
+    elif augmentation == 'cjitter_0.8':
+        transform_list = ['CJitter_0.8', 'Resize', 'ToTensor', 'Normalize']
+    elif augmentation == 'cjitter_1.0':
+        transform_list = ['CJitter_1.0', 'Resize', 'ToTensor', 'Normalize']
+    
+    # magnitude 기준 notation
+    elif augmentation == 'base_1': # (cjitter, rcrop) = (0.2, 0.8)
+        transform_list = ['CJitter_0.2', 'RCrop_0.8', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
+    elif augmentation == 'base_2': # (0.4, 0.6)
+        transform_list = ['CJitter_0.4', 'RCrop_0.6', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
+    elif augmentation == 'base_3': # (0.6, 0.4)
+        transform_list = ['CJitter_0.6', 'RandomColorJitter', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
+    elif augmentation == 'base_4': # (0.8, 0.2)
+        transform_list = ['CJitter_0.8', 'RCrop_0.2', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
 
     else:
         raise ValueError('Unsupported augmentation: {}'.format(augmentation))
