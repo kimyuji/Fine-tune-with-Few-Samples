@@ -24,9 +24,9 @@ from sklearn.cluster import KMeans
 from sklearn.metrics.cluster import v_measure_score
 
 def main(params):
-    #os.environ["CUDA_VISIBLE_DEVICES"] = params.gpu_idx
+    os.environ["CUDA_VISIBLE_DEVICES"] = params.gpu_idx
     device = torch.device(f'cuda:{params.gpu_idx}' if torch.cuda.is_available() else 'cpu')
-    torch.cuda.set_device(device)
+    # torch.cuda.set_device(device)
     base_output_dir = get_output_directory(params) 
     output_dir = get_ft_output_directory(params)
     torch_pretrained = ("torch" in params.backbone)
