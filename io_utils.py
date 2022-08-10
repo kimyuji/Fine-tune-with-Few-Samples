@@ -120,6 +120,8 @@ def parse_args(mode):
     parser.add_argument('--num_tta', default=1, type=int, help='the number of augmented samples aside from clean sample')
     parser.add_argument('--include_clean', default=False, type=bool, help='whether to include clean sample for evaluation')
     
+    # update layer options
+    parser.add_argument('--upt_blocks', type=str, nargs='+')
 
     if mode == 'train' or mode == 'pretrain':
         parser.add_argument('--num_classes' , default=200, type=int, help='total number of classes in softmax, only used in baseline') #make it larger than the maximum label value in base class
