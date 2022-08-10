@@ -59,11 +59,11 @@ def main(params):
     
     elif params.ft_augmentation == "base":
         aug_type = "base_"
-        aug_intensity = [1, 2, 3, 4]
+        aug_intensity = ["weaker", "weak", "strong", "stronger"]
         
     elif params.ft_augmentation == "randomcolorjitter":
         aug_type = "cjitter_"
-        aug_intensity = [0.2, 0.6, 0.8, 1.0]
+        aug_intensity = [0.2, 0.4, 0.6, 0.8]
         
     num_intensity = len(aug_intensity)
     
