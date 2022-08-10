@@ -76,12 +76,13 @@ def main(params):
                                                     num_workers=params.num_workers,
                                                     split_seed=params.split_seed,
                                                     episode_seed=params.ft_episode_seed)
-    
-    if params.ft_augmentation is None:
-        params.ft_augmentation = 'base'
+    if params.ft_augmentation is not None:
+        tta_augmentation = params.ft_augmentation
+    else :
+        tta_augmentation = 'base'
     query_tta_loader = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=False,
                                                     n_query_shot=q, n_episodes=n_episodes, n_epochs=1,
-                                                    augmentation=params.ft_augmentation,
+                                                    augmentation=tta_augmentation,
                                                     unlabeled_ratio=0,
                                                     num_workers=params.num_workers,
                                                     split_seed=params.split_seed,
@@ -329,8 +330,10 @@ def main(params):
         # df_loss.loc[episode + 1] = train_loss_history
         # df_loss.to_csv(loss_history_path)
         
-        del x_support, x_query, x_support_aug, 
+        del x_support, x_query,
         del x_query_tta, f_query_tta, query_list, pred_tta_all 
+        if params.ft_augmentation:
+            del x_support_aug
         torch.cuda.empty_cache()
 
         fmt = 'Episode {:03d}: test_acc={:6.2f}'
