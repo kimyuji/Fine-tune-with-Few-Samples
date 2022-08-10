@@ -37,12 +37,14 @@ class TTA_Augmentation:
         self.aug_mode = aug_mode
 
     def __call__(self, img):
-        # include clean
-        self.augmented_imgs = []
-        self.augmented_imgs.append(get_composed_transform(None)(img))
-        # include aug
-        for i in range(31):
-            self.augmented_imgs.append(get_composed_transform(self.aug_mode)(img))
+        self.augmented_imgs = get_composed_transform(self.aug_mode)(img)
+        
+        # # include clean
+        # self.augmented_imgs = []        
+        # self.augmented_imgs.append(get_composed_transform(None)(img))
+        # # include aug
+        # for i in range(31):
+        #     self.augmented_imgs.append(get_composed_transform(self.aug_mode)(img))
 
         return self.augmented_imgs # return as a list including lists
 

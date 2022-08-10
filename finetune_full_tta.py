@@ -80,15 +80,15 @@ def main(params):
         tta_augmentation = params.ft_augmentation
     else :
         tta_augmentation = 'base'
+        
     query_tta_loader = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=False,
-                                                    n_query_shot=q, n_episodes=n_episodes, n_epochs=1,
+                                                    n_query_shot=q, n_episodes=n_episodes, n_epochs=tta_num_samples[-1]-1, # here, n_epochs should be set to tta augmentation samples #
                                                     augmentation=tta_augmentation,
                                                     unlabeled_ratio=0,
                                                     num_workers=params.num_workers,
                                                     split_seed=params.split_seed,
                                                     episode_seed=params.ft_episode_seed,
                                                     tta=True)
-
 
     assert (len(support_loader) == n_episodes * support_epochs)
     assert (len(query_loader) == n_episodes)
@@ -191,7 +191,8 @@ def main(params):
         f_query = None
         y_query_np = y_query.cpu().numpy()
 
-        x_query_tta = torch.cat(next(query_tta_iterator)[0]).cuda()
+        # x_query_tta = torch.cat(next(query_tta_iterator)[0]).cuda()
+        x_query_tta = None
 
         test_tta_acc_history = []
         test_acc_history = []
@@ -304,15 +305,17 @@ def main(params):
                     pred = head(f_query)
                     correct = torch.eq(y_query, pred.argmax(dim=1)).sum()
                     test_acc = correct / pred.shape[0]
+                    query_list = pred.unsqueeze(0)
 
-                    # TTA Evaluation                    
-                    f_query_tta = body_forward(x_query_tta, body, backbone, torch_pretrained, params)
-                    pred_tta_all = head(f_query_tta)
+                    # TTA Evaluation
+                    for _ in range(tta_num_samples[-1]-1):
+                        x_query_tta = next(query_tta_iterator)[0].cuda()
+                        f_query_tta = body_forward(x_query_tta, body, backbone, torch_pretrained, params)
+                        pred_tta = head(f_query_tta)
+                        query_list = torch.cat([query_list, pred_tta.unsqueeze(0)], dim=0)
 
-                    query_list = torch.chunk(pred_tta_all.unsqueeze(0), tta_num_samples[-1], dim=1)
-
-                    for num_tta in tta_num_samples : 
-                        pred_tta = torch.mean(torch.cat(query_list[:num_tta], axis=0), axis=0)
+                    for num_tta in tta_num_samples:
+                        pred_tta = torch.mean(query_list[:num_tta], axis=0)
                         correct = torch.eq(y_query, pred_tta.argmax(dim=1)).sum()
                         test_tta_acc = correct / pred_tta.shape[0]
                         test_tta_acc_history.append(test_tta_acc.item())
@@ -331,7 +334,7 @@ def main(params):
         # df_loss.to_csv(loss_history_path)
         
         del x_support, x_query,
-        del x_query_tta, f_query_tta, query_list, pred_tta_all 
+        del x_query_tta, f_query_tta, query_list 
         if params.ft_augmentation:
             del x_support_aug
         torch.cuda.empty_cache()
