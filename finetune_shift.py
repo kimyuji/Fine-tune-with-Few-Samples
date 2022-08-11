@@ -86,20 +86,7 @@ def main(params):
                                                    unlabeled_ratio=0,
                                                    num_workers=params.num_workers,
                                                    split_seed=params.split_seed,
-                                                   episode_seed=params.ft_episode_seed,
-                                                   eval_mode=params.ft_tta_mode)
-
-    if params.ft_valid_mode:
-        valid_loader = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=True,
-                                                        n_query_shot=q, n_episodes=n_episodes, n_epochs=1,
-                                                        augmentation=None,
-                                                        unlabeled_ratio=0,
-                                                        num_workers=params.num_workers,
-                                                        split_seed=params.split_seed,
-                                                        episode_seed=params.ft_episode_seed,
-                                                        eval_mode=params.ft_valid_mode)
-    else:
-        valid_loader = None
+                                                   episode_seed=params.ft_episode_seed)
 
     assert (len(support_loader) == n_episodes * support_epochs)
     assert (len(query_loader) == n_episodes)
@@ -108,16 +95,11 @@ def main(params):
     support_clean_iterator = iter(support_clean_loader)
     support_aug_iterator = iter(support_aug_loader)
     support_batches = math.ceil(n_data / bs)
-    if valid_loader is not None:
-        valid_iterator = iter(valid_loader)
-    else:
-        valid_iterator = None
     query_iterator = iter(query_loader)
 
     # Output (history, params)
     train_history_path = get_ft_train_history_path(output_dir)
     loss_history_path = get_ft_loss_history_path(output_dir)
-    valid_history_path = get_ft_valid_history_path(output_dir)
     test_history_path = get_ft_test_history_path(output_dir)
     support_v_score_history_path, query_v_score_history_path = get_ft_v_score_history_path(output_dir)
     shift_history_path = train_history_path.replace('train_history', 'shift_history')
@@ -126,11 +108,6 @@ def main(params):
 
     print('Saving finetune params to {}'.format(params_path))
     print('Saving finetune train history to {}'.format(train_history_path))
-    if params.ft_valid_mode:
-        valid_history_path = valid_history_path.replace(".csv", "_"+params.ft_valid_mode+".csv")
-        print('Saving finetune validation history to {}'.format(valid_history_path))
-    if params.ft_tta_mode:
-        test_history_path = test_history_path.replace(".csv", "_"+params.ft_tta_mode+".csv")
     print('Saving finetune test history to {}'.format(test_history_path))
     print()
 
@@ -145,8 +122,6 @@ def main(params):
                            columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
     df_loss = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
                            columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
-    df_valid = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
-                            columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
     df_v_score_support = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
                                      columns=['epoch{}'.format(e+1) for e in range(n_epoch)])
     df_v_score_query = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
@@ -206,7 +181,7 @@ def main(params):
         opt_params = []
         opt_params.append({'params': head.parameters()})
         opt_params.append({'params': body.parameters()})
-        optimizer = torch.optim.SGD(opt_params, lr=params.ft_lr, momentum=0.9, dampening=0.9, weight_decay=0.001)
+        optimizer = torch.optim.SGD(opt_params, lr=0.01, momentum=0.9, dampening=0.9, weight_decay=0.001)
 
         criterion = nn.CrossEntropyLoss().cuda()
 
@@ -218,21 +193,7 @@ def main(params):
         x_clean_support = next(support_clean_iterator)[0].cuda()
         x_aug_support = next(support_aug_iterator)[0].cuda()
 
-        if valid_iterator is not None:
-            f_valid = None
-            y_valid = torch.arange(w).repeat_interleave(s).cuda()
-            y_valid_np = y_valid.cpu().numpy()
-            if 'fixed' in params.ft_valid_mode :
-                x_valid = torch.cat(next(valid_iterator)[0]).cuda()
-                y_valid = torch.cat([y_valid]*(len(x_valid)//len(y_valid)), dim=0)
-            else:
-                x_valid = next(valid_iterator)[0].cuda()
-
-        if params.ft_tta_mode and 'fixed' in params.ft_tta_mode :
-                x_query = torch.cat(next(query_iterator)[0]).cuda()
-        else:
-            x_query = next(query_iterator)[0].cuda()
-
+        x_query = next(query_iterator)[0].cuda()
         y_query = torch.arange(w).repeat_interleave(q).cuda() 
         f_query = None
         y_query_np = y_query.cpu().numpy()
@@ -240,7 +201,6 @@ def main(params):
         
         train_acc_history = []
         train_loss_history = []
-        valid_acc_history = []
         test_acc_history = []
         support_v_score = []
         query_v_score = []
@@ -252,8 +212,6 @@ def main(params):
 
         with torch.no_grad():
             f_query = body_forward(x_query, body, backbone, torch_pretrained, params)
-            if params.ft_tta_mode and 'fixed' in params.ft_tta_mode :
-                f_query = torch.mean(torch.cat(torch.chunk(f_query.unsqueeze(0), num_aug, dim=1), axis=0), axis=0)
             f_query_np = f_query.cpu().numpy()
             kmeans = KMeans(n_clusters = w)
             cluster_pred = kmeans.fit(f_query_np).labels_
@@ -360,15 +318,6 @@ def main(params):
             if epoch == n_epoch - 1:
                 body.eval()
                 head.eval()
-                # Validation Set Evaluation
-                if params.ft_valid_mode:
-                    with torch.no_grad():
-                        f_valid = body_forward(x_valid, body, backbone, torch_pretrained, params)
-                        pred = head(f_valid)
-                        correct = torch.eq(y_valid, pred.argmax(dim=1)).sum()
-                    valid_acc = correct / pred.shape[0]
-                else:
-                    valid_acc = torch.tensor(0)
 
                 # V-measure support
                 # if params.v_score and params.n_shot != 1:
@@ -384,8 +333,6 @@ def main(params):
 
                     f_query = body_forward(x_query, body, backbone, torch_pretrained, params)
                     pred = head(f_query)
-                    if params.ft_tta_mode and 'fixed' in params.ft_tta_mode :
-                        pred = torch.mean(torch.cat(torch.chunk(pred.unsqueeze(0), num_aug, dim=1), axis=0), axis=0)
                     correct = torch.eq(y_query, pred.argmax(dim=1)).sum()
 
                     # shift with clean support                  
@@ -408,7 +355,6 @@ def main(params):
                     cluster_pred = kmeans.fit(f_query).labels_
                     query_v_score.append(v_measure_score(cluster_pred, y_query_np))
             else:
-                valid_acc = torch.tensor(0)
                 test_acc = torch.tensor(0)
                 support_v_score.append(0.0)
                 query_v_score.append(0.0)
@@ -419,7 +365,6 @@ def main(params):
                 print(fmt.format(epoch + 1, train_loss, train_acc, test_acc))
 
             train_acc_history.append(train_acc.item())
-            valid_acc_history.append(valid_acc.item())
             test_acc_history.append(test_acc.item())
             train_loss_history.append(train_loss)
             
@@ -428,9 +373,6 @@ def main(params):
         shift_acc_history.append(shift_aug.item()) 
         df_shift.loc[episode + 1] = shift_acc_history
         df_shift.to_csv(shift_history_path)
-
-        if params.ft_valid_mode:
-            df_valid.loc[episode + 1] = valid_acc_history
 
         fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_acc={:6.2f} shift_clean={:6.2f} shift_aug={:6.2f}'
         print(fmt.format(episode, train_loss, train_acc.item() * 100, test_acc.item() * 100, shift_clean.item(), shift_aug.item()))
