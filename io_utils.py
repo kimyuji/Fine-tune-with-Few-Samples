@@ -122,6 +122,8 @@ def parse_args(mode):
     
     # update layer options
     parser.add_argument('--upt_blocks', type=str, nargs='+')
+    parser.add_argument('--train_aug_idx' , default=9999, type=int,  help='class num to classify for training')
+    parser.add_argument('--test_aug_idx'  , default=9999, type=int,  help='class num to classify for testing (validation) ')
 
     if mode == 'train' or mode == 'pretrain':
         parser.add_argument('--num_classes' , default=200, type=int, help='total number of classes in softmax, only used in baseline') #make it larger than the maximum label value in base class

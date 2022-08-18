@@ -168,11 +168,13 @@ def main(params):
         head = get_classifier_head_class(params.ft_head)(512, params.n_way, params)  # TODO: apply ft_features
 
         body.cuda()
+        for p in body.parameters():
+            p.requires_grads = False
         head.cuda()
 
         opt_params = []
         opt_params.append({'params': head.parameters(), 'lr': params.head_lr, 'momentum' : 0.9, 'dampening' : 0.9, 'weight_decay' : 0.001})
-        opt_params.append({'params': body.parameters(), 'lr': params.body_lr, 'momentum' : 0.9, 'dampening' : 0.9, 'weight_decay' : 0.001})
+        opt_params.append({'params': body.parameters(), 'lr': 0, 'momentum' : 0.9, 'dampening' : 0.9, 'weight_decay' : 0.001})
         optimizer = torch.optim.SGD(opt_params)
 
         criterion = nn.CrossEntropyLoss().cuda()
@@ -208,7 +210,7 @@ def main(params):
         # For each epoch
         for epoch in range(n_epoch):
             # Train
-            body.train()
+            body.eval()
             head.train()
 
             aug_bool = mix_bool or params.ft_augmentation

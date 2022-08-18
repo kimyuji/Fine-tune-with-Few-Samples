@@ -12,6 +12,7 @@ logs/
 *.pt
 *.sh
 *.json
+*.csv
 feature/
 LICENSE
 
