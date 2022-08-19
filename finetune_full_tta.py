@@ -98,7 +98,7 @@ def main(params):
     train_history_path = get_ft_train_history_path(output_dir)
     loss_history_path = get_ft_loss_history_path(output_dir)
     test_history_path = get_ft_test_history_path(output_dir)
-    test_tta_history_path = get_ft_test_tta_history_path(output_dir, params)
+    test_tta_history_path = get_ft_test_tta_history_path(output_dir)
 
     params_path = get_ft_params_path(output_dir)
 
