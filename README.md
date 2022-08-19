@@ -7,18 +7,20 @@ The code is implemented on Pytorch.
 python ./finetune_full.py --ls --source_dataset miniImageNet --target_dataset miniImageNet_test --backbone resnet10 --model base --ft_parts full --split_seed 1 --n_shot 5 --gpu_idx 0 --ft_augmentation base
 ```
 
-The argument for applying augmentation is as follows: 
+The argument for applying update methods and augmentation techniques is as follows:
+
+### Update Method
+- LP : `--ft_parts head`
+- FT : `--ft_parts full`
 
 ### Single Augmentation
-```
---ft_augmentation base
---ft_augmentation rcrop
---ft_augmentation hflip
---ft_augmentation cjitter 
-```
+
+- Base Aug : `--ft_augmentation base` <br>
+- RCrop : `--ft_augmentation rcrop` <br>
+- HFlip : `--ft_augmentation hflip` <br>
+- CJitter : `--ft_augmentation cjitter ` <br>
+
 
 ### Mixing Augmentation
-```
---ft_mixup both
---ft_cutmix both
-```
+- MixUp (W+B) : `--ft_mixup both` <br>
+- CutMix (W+B) : `--ft_cutmix both` <br>
