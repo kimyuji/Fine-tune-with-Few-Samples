@@ -8,6 +8,7 @@ __pycache__
 unknown_files/
 img_pdf/
 logs/
+new_logs/
 .idea
 *.pt
 *.sh
@@ -15,6 +16,7 @@ logs/
 *.csv
 feature/
 LICENSE
+unnecessary/
 
 # user-defined files
 *.log
