@@ -10,10 +10,6 @@ img_pdf/
 logs/
 new_logs/
 .idea
-*.pt
-*.sh
-*.json
-*.csv
 feature/
 LICENSE
 unnecessary/
@@ -24,6 +20,9 @@ unnecessary/
 *.pkl
 *.csv
 *.JPEG
+*.pit
+*.sh
+*.json
 wandb/
 
 # Byte-compiled / optimized / DLL files
