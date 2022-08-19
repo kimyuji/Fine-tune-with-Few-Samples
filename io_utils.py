@@ -22,7 +22,6 @@ def parse_args(mode):
     parser.add_argument('--source_dataset', default='miniImageNet')  # replaces dataset
     parser.add_argument('--target_dataset', type=str, nargs='+')  # replaces dataset_names / HOTFIX: changed to list to allow for multiple targets with one CLI command
     parser.add_argument('--backbone', default='resnet10', help='Refer to backbone._backbone_class_map')  # replaces model
-    # parser.add_argument('--model', default='base', help='Refer to model.model_class_map')  # similar to method
 
     # Model parameters (make sure to prepend with `model_`)
     parser.add_argument('--model_simclr_projection_dim', default=128, type=int)
@@ -89,8 +88,6 @@ def parse_args(mode):
     
     # experiments 
     parser.add_argument('--v_score', action='store_true', help='save v measurement cluster store')
-    parser.add_argument('--layer_diff', action='store_true', help='save |pretrain - fine-tuned| each layers')
-    parser.add_argument('--save_LP_FT_feat', action='store_true', help='save LP and FT features of query set')
     parser.add_argument('--ft_update_scheduler', default=None, type=str ,help="version : {LP-FT, body-FT, body-LP, LP-body}")
     parser.add_argument('--save_norm', action='store_true', help='save gradient norm of each layers')
     

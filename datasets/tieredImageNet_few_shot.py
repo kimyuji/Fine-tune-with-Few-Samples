@@ -30,9 +30,6 @@ def construct_subset(dataset, labeled):
     class_to_idx = dataset.class_to_idx
     targets = [class_to_idx[os.path.dirname(i)] for i in split]
 
-    # image_names = np.array([i[0] for i in dataset.imgs])
-    # # ind 
-    # ind = np.concatenate([np.where(image_names == os.path.join(root, j))[0] for j in split])
     image_names = [os.path.join(root, j) for j in split]
     dataset_subset = copy.deepcopy(dataset)
 
@@ -99,13 +96,10 @@ class SetDataset:
         for i, (data, label) in enumerate(d):
             self.sub_meta[label].append(data)
 
-        #         for key, item in self.sub_meta.items():
-        #             print (len(self.sub_meta[key]))
-
         self.sub_dataloader = []
         sub_data_loader_params = dict(batch_size=batch_size,
                                       shuffle=True,
-                                      num_workers=0,  # use main thread only or may receive multiple batches
+                                      num_workers=0,  
                                       pin_memory=False)
         for cl in self.cl_list:
             sub_dataset = SubDataset(self.sub_meta[cl], cl, transform=transform)

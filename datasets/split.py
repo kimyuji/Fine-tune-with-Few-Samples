@@ -28,9 +28,6 @@ def split_dataset(dataset: ImageFolder, ratio=20, seed=1):
     :return: unlabeled_dataset, labeled_dataset
     """
     assert (0 <= ratio <= 100)
-
-    # Check default splits
-    # csv path 불러오기 
     unlabeled_path = _get_split_path(dataset, ratio, seed, True)
     labeled_path = _get_split_path(dataset, ratio, seed, False)
 
@@ -38,7 +35,6 @@ def split_dataset(dataset: ImageFolder, ratio=20, seed=1):
         if ratio == 20 and seed == 1 and dataset.name in DATASETS_WITH_DEFAULT_SPLITS and not os.path.exists(path):
             raise Exception("Default split file missing: {}".format(path))
 
-    # csv 내 내용 불러오기 (str으로 채워진 list)
     if os.path.exists(unlabeled_path) and os.path.exists(labeled_path):
         print("Loading unlabeled split from {}".format(unlabeled_path))
         print("Loading labeled split from {}".format(labeled_path))
@@ -54,7 +50,6 @@ def split_dataset(dataset: ImageFolder, ratio=20, seed=1):
     ud = copy.deepcopy(dataset)
     ld = copy.deepcopy(dataset)
 
-    # split csv에 저장되어 있는 sample들만 저장
     _apply_split(ud, unlabeled)
     _apply_split(ld, labeled)
 
@@ -85,16 +80,16 @@ def _save_split(split: List, path):
     df.to_csv(path)
 
 
-def _load_split(path) -> List[str]: # -> : return 값의 상태 명시^^
+def _load_split(path) -> List[str]: 
     df = pd.read_csv(path)
-    return df["img_path"].values # 어차피 img_path column밖에 없음
+    return df["img_path"].values 
 
 
 def _get_split_path(dataset: ImageFolder, ratio: int, seed=1, unlabeled=True, makedirs=True):
     if unlabeled:
-        basename = '{}_unlabeled_{}.csv'.format(dataset.name, ratio) # 20
-    else: # labeled
-        basename = '{}_labeled_{}.csv'.format(dataset.name, 100 - ratio) # 80
+        basename = '{}_unlabeled_{}.csv'.format(dataset.name, ratio) 
+    else: 
+        basename = '{}_labeled_{}.csv'.format(dataset.name, 100 - ratio) 
     path = os.path.join(DIRNAME, 'split_seed_{}'.format(seed), basename)
     if makedirs:
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -102,18 +97,18 @@ def _get_split_path(dataset: ImageFolder, ratio: int, seed=1, unlabeled=True, ma
 
 
 def _apply_split(dataset: ImageFolder, split: List[str]):
-    img_paths = [] # sample들의 png이름 저장
-    for path, label in dataset.samples: # ('/data/cdfsl/chestX/images/00000001_000.png' , 1)
-        root_with_slash = os.path.join(dataset.root, "") # '/data/cdfsl/chestX/images'
-        img_paths.append(path.replace(root_with_slash, "")) # png이름만 append
+    img_paths = [] 
+    for path, label in dataset.samples: 
+        root_with_slash = os.path.join(dataset.root, "") 
+        img_paths.append(path.replace(root_with_slash, "")) 
 
-    split_set = set(split) # 중복 제거 
+    split_set = set(split) 
     samples = []
-    for path, sample in zip(img_paths, dataset.samples): # 모든 sample들 순환
-        if len(split) > 0 and '.jpg' not in split[0] and dataset.name == 'ISIC':  # HOTFIX (paths in ISIC's default split file don't have ".jpg")
+    for path, sample in zip(img_paths, dataset.samples): 
+        if len(split) > 0 and '.jpg' not in split[0] and dataset.name == 'ISIC': 
             path = path.replace('.jpg', '')
         if path in split_set:
-            samples.append(sample) #(path, label) pair 전체가 저장됨!
+            samples.append(sample) 
 
     dataset.samples = samples
     dataset.imgs = samples

@@ -63,7 +63,6 @@ def get_output_directory(params: Namespace, pls_previous=False, makedirs=True):
     path = configs.save_dir
     path = os.path.join(path, 'baseline')
     path = os.path.join(path, 'output')
-    # path = os.path.join(path, DATASET_KEYS[params.source_dataset])
 
     pretrain_specifiers = []
     pretrain_specifiers.append(BACKBONE_KEYS[params.backbone])
@@ -139,9 +138,6 @@ def get_ft_output_directory(params, makedirs=True, experiment=False):
     ft_basename = '{:02d}way_{:03d}shot_{}_{}'.format(params.n_way, params.n_shot, params.ft_parts, params.ft_tag)
     path = os.path.join(path, ft_basename)
 
-    if experiment == True:
-        path = path.replace("baseline/output", "experiment/perplexity")
-
     if params.ft_augmentation :
         path = os.path.join(path, 'augmentation')
         path = os.path.join(path, params.ft_augmentation)
@@ -151,10 +147,6 @@ def get_ft_output_directory(params, makedirs=True, experiment=False):
     if params.ft_mixup:
         path = os.path.join(path, 'mixup')
         path = os.path.join(path, params.ft_mixup)
-        
-    if params.ft_update_scheduler:
-        path = os.path.join(path, params.ft_update_scheduler)
-
     if params.ft_scheduler_start != params.ft_scheduler_end:
         path = os.path.join(path, 'scheduler_{:03d}_{:03d}'.format(params.ft_scheduler_start, params.ft_scheduler_end))
     
@@ -171,7 +163,6 @@ def get_ft_params_path(output_directory):
 
 def get_ft_train_history_path(output_directory):
     return os.path.join(output_directory, 'train_history.csv')
-
 
 def get_ft_test_history_path(output_directory):
     return os.path.join(output_directory, 'test_history.csv')

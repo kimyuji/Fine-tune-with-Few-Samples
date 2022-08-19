@@ -17,26 +17,21 @@ class EpisodeSampler:
         self.dataset = dataset
         self.n_classes = len(dataset.classes)
         self.w = n_way
-        self.s = n_shot # 160 or 200
-        self.q = n_query_shot # 0
-        self.n_episodes = n_episodes # 1
+        self.s = n_shot 
+        self.q = n_query_shot 
+        self.n_episodes = n_episodes 
         self.seed = seed
         self.class_task = math.floor(self.n_classes/self.w)
         self.task_random = np.random.randint(self.class_task)
 
-        rs = np.random.RandomState(seed) # random generator 객체 자체를 가지고옴
+        rs = np.random.RandomState(seed) 
         self.episode_seeds = []
         for i in range(n_episodes):
             self.episode_seeds.append(rs.randint(2 ** 32 - 1))
 
-        self.indices_by_class = defaultdict(list) # default값이 list형식인 dict
+        self.indices_by_class = defaultdict(list)
         for index, (path, label) in enumerate(dataset.samples):
-            self.indices_by_class[label].append(index) # {label : [index, index], ...} # 같은 label(class)인 경우 리스트 내에 들어감~
-        
-        #self.class_comb = combinations(range(self.n_classes), self.w)
-
-        # for i in range(self.n_classes):
-        #     print("class", i, ":", len(self.indices_by_class[i]))
+            self.indices_by_class[label].append(index) 
 
     def __getitem__(self, index):
         """
@@ -44,37 +39,19 @@ class EpisodeSampler:
         :return: support: ndarray[w, s], query: ndarray[w ,q]
         """
         rs = np.random.RandomState(self.episode_seeds[index])
-        # fix class 
-        # if self.dataset.name == 'CropDisease':
-        #     selected_classes = [3, 15, 16, 24, 28]
-        # elif self.dataset.name == 'ISIC':
-        #     selected_classes = [0, 1, 2, 3, 4]
-        # else:
-        #     selected_classes = rs.permutation(self.n_classes)[:self.w]
 
-        selected_aux_classes = rs.permutation(self.n_classes)[:self.w+1] # fix classes
+        selected_aux_classes = rs.permutation(self.n_classes)[:self.w+1] 
         selected_classes = selected_aux_classes[:self.w]
         aux_class = selected_aux_classes[-1]
-        # selected_classes = [self.task_random * self.w + i for i in range(self.w)]
-        # selected_classes = next(self.class_comb)
-        # print(selected_classes)
-
         indices = []
-        # support_indices = []
-        # query_indices = []
-        
-        for cls in selected_classes: # 해당 cls에 해당하는 sample index 중에서 sampling
-            # support_indices.append(rs.choice(self.indices_by_class[cls][15:], self.s, replace=False))
-            # query_indices.append(rs.choice(self.indices_by_class[cls][:15], self.q, replace=False))
-            try : indices.append(rs.choice(self.indices_by_class[cls], self.s + self.q, replace=False)) # 비복원 추출 # 인덱스를 추출해서 넣어야할듯 
+ 
+        for cls in selected_classes: 
+            try : indices.append(rs.choice(self.indices_by_class[cls], self.s + self.q, replace=False)) 
             except : 
                 print(cls)
                 indices.append(rs.choice(self.indices_by_class[aux_class], self.s + self.q, replace=False))
         
-        # support = np.stack(support_indices)
-        # query = np.stack(query_indices)
-        episode = np.stack(indices) # [800, 3, 224, 224]
-        # support query split
+        episode = np.stack(indices) 
         support = episode[:, :self.s]
         query = episode[:, self.s:] 
         return support, query

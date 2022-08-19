@@ -58,7 +58,7 @@ def get_single_transform(augmentation : str):
     transform = [augmentation]
     return transform + ['Resize', 'ToTensor', 'Normalize']
 
-def get_fixed_transform_with_clean(aug_list, image_size=224) -> list: # return list
+def get_fixed_transform_with_clean(aug_list, image_size=224) -> list: 
     transform_list = []
     # first, add original 
     original_transform = ['Resize', 'ToTensor', 'Normalize']
@@ -70,7 +70,7 @@ def get_fixed_transform_with_clean(aug_list, image_size=224) -> list: # return l
         transform_list.append(transform_comp)
     return transform_list
 
-def get_fixed_transform(aug_list, image_size=224) -> list: # return list
+def get_fixed_transform(aug_list, image_size=224) -> list:
     transform_list = []
     for aug in aug_list:
         transform_single = get_single_transform(aug)
@@ -79,7 +79,7 @@ def get_fixed_transform(aug_list, image_size=224) -> list: # return list
     return transform_list
 
 
-def get_composed_transform(augmentation: str = None, image_size=224) -> transforms.Compose: #return 주석
+def get_composed_transform(augmentation: str = None, image_size=224) -> transforms.Compose: 
     if augmentation == 'base':
         transform_list = ['RandomColorJitter', 'RandomResizedCrop', 'RandomHorizontalFlip', 'ToTensor',
                           'Normalize']
@@ -88,34 +88,14 @@ def get_composed_transform(augmentation: str = None, image_size=224) -> transfor
                           'RandomHorizontalFlip', 'ToTensor', 'Normalize']
 
     elif augmentation is None or augmentation.lower() == 'none':
-        transform_list = ['Resize', 'ToTensor', 'Normalize'] # Resize필수!TT
+        transform_list = ['Resize', 'ToTensor', 'Normalize'] 
 
-    # analyze individually
     elif augmentation == 'rcrop':
         transform_list = ['RandomResizedCrop', 'ToTensor', 'Normalize']
     elif augmentation == 'cjitter':
         transform_list = ['RandomColorJitter', 'Resize', 'ToTensor', 'Normalize']
     elif augmentation == 'hflip':
         transform_list = ['RandomHorizontalFlip', 'Resize', 'ToTensor', 'Normalize']
-
-    # Intensity
-#     elif augmentation == 'rcrop_stronger':
-#         transform_list = ['RCrop_stronger', 'ToTensor', 'Normalize']
-#     elif augmentation == 'rcrop_strong':
-#         transform_list = ['RCrop_strong', 'ToTensor', 'Normalize']
-#     elif augmentation == 'rcrop_weak':
-#         transform_list = ['RCrop_weak', 'ToTensor', 'Normalize']
-#     elif augmentation == 'rcrop_weaker':
-#         transform_list = ['RCrop_weaker', 'ToTensor', 'Normalize']
-        
-#     elif augmentation == 'cjitter_stronger':
-#         transform_list = ['CJitter_stronger', 'Resize', 'ToTensor', 'Normalize']
-#     elif augmentation == 'cjitter_strong':
-#         transform_list = ['CJitter_strong', 'Resize', 'ToTensor', 'Normalize']
-#     elif augmentation == 'cjitter_weak':
-#         transform_list = ['CJitter_weak', 'Resize', 'ToTensor', 'Normalize']
-#     elif augmentation == 'cjitter_weaker':
-#         transform_list = ['CJitter_weaker', 'Resize', 'ToTensor', 'Normalize']
     
     elif augmentation == 'base_weaker': 
         transform_list = ['CJitter_weaker', 'RCrop_weaker', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
@@ -135,13 +115,13 @@ def get_composed_transform(augmentation: str = None, image_size=224) -> transfor
 
 
 # get 4 corner points of patches for CutMix
-def rand_bbox(size, lam): # size : [B, C, W, H]
-    W = size[2] # 224
-    H = size[3] # 224
+def rand_bbox(size, lam):
+    W = size[2] 
+    H = size[3] 
 
-    cut_rat = np.sqrt(1. - lam)  # ratio of patch size 
-    cut_w = np.int(W * cut_rat)  # patch width
-    cut_h = np.int(H * cut_rat)  # patch height
+    cut_rat = np.sqrt(1. - lam)  
+    cut_w = np.int(W * cut_rat) 
+    cut_h = np.int(H * cut_rat)  
     
     cx = np.random.randint(W)
     cy = np.random.randint(H)

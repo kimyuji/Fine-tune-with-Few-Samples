@@ -58,19 +58,3 @@ def body_forward(input, body, backbone, torch_pretrained, params):
     else:
         output = body.forward_features(input, params.ft_features)
     return output 
-
-# # optimizer configuration
-# _optimizer_map = {
-#     'SGD': ResNet10,
-#     'Adam': ResNet18,
-#     'RMSprop' : Torch_ResNet18,
-#     'Adagrad' : Torch_ResNet34,
-#     'RMSprop_no_momentum' : Torch_ResNet50
-# }
-
-
-# def get_backbone_class(key):
-#     if key in _optimizer_map:
-#         return _optimizer_map[key]
-#     else:
-#         raise ValueError('Invalid backbone: {}'.format(key))
