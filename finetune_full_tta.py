@@ -2,11 +2,9 @@ import os
 import copy
 import json
 import math
-import pickle
 from webbrowser import get
 import pandas as pd
 import torch.nn as nn
-from torchvision import transforms
 import itertools
 from backbone import get_backbone_class
 import backbone
@@ -15,7 +13,7 @@ from datasets.transforms import rand_bbox
 from io_utils import parse_args
 from model import get_model_class
 from model.classifier_head import get_classifier_head_class
-from paths import get_output_directory, get_ft_output_directory, get_ft_train_history_path, get_ft_test_history_path, get_ft_valid_history_path, \
+from paths import get_output_directory, get_ft_output_directory, get_ft_train_history_path, get_ft_test_history_path, \
     get_final_pretrain_state_path, get_pretrain_state_path, get_ft_params_path, get_ft_v_score_history_path, get_ft_test_tta_history_path, get_ft_loss_history_path
 from utils import *
 import time 
@@ -29,8 +27,6 @@ def main(params):
     base_output_dir = get_output_directory(params) 
     output_dir = get_ft_output_directory(params)
     torch_pretrained = ("torch" in params.backbone)
-
-    #assert (params.ft_augmentation is not None)
 
     print('Running fine-tune with output folder:')
     print(output_dir)
@@ -79,7 +75,7 @@ def main(params):
     if params.ft_augmentation is not None:
         tta_augmentation = params.ft_augmentation
     else :
-        tta_augmentation = 'base'
+        tta_augmentation = 'base' #(TTA without DA)
         
     query_tta_loader = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=False,
                                                     n_query_shot=q, n_episodes=n_episodes, n_epochs=tta_num_samples[-1]-1, # here, n_epochs should be set to tta augmentation samples #
@@ -103,13 +99,6 @@ def main(params):
     loss_history_path = get_ft_loss_history_path(output_dir)
     test_history_path = get_ft_test_history_path(output_dir)
     test_tta_history_path = get_ft_test_tta_history_path(output_dir, params)
-
-    if params.body_lr != 0.01:
-        train_history_path = train_history_path.replace('.csv', '_bodylr_{}.csv'.format(params.body_lr))
-        test_history_path = test_history_path.replace('.csv', '_bodylr_{}.csv'.format(params.body_lr))
-    if params.head_lr != 0.01:
-        train_history_path = train_history_path.replace('.csv', '_headlr_{}.csv'.format(params.head_lr))
-        test_history_path = test_history_path.replace('.csv', '_headlr_{}.csv'.format(params.head_lr))
 
     params_path = get_ft_params_path(output_dir)
 
@@ -149,9 +138,8 @@ def main(params):
     print("%02d/%02d %02d:%02d:%02d" %(now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec))
     print()
 
-    # mixup, cutmix, manifold mixup need 2 labels <- mix_bool == True
-    mix_bool = (params.ft_mixup or params.ft_cutmix or params.ft_manifold_mixup)
-    # for cutmix or mixup (different class option)
+    mix_bool = (params.ft_mixup or params.ft_cutmix)
+    # for cutmix or mixup (between class option)
     if mix_bool:
         all_cases = list(itertools.permutations(list(range(w))))
         class_shuffled = all_cases
@@ -173,17 +161,22 @@ def main(params):
 
         body.cuda()
         head.cuda()
+        if params.ft_parts == "head":
+            for p in body.parameters():
+                p.requires_grads = False
+        else:
+            pass
 
         opt_params = []
-        opt_params.append({'params': head.parameters(), 'lr': params.head_lr, 'momentum' : 0.9, 'dampening' : 0.9, 'weight_decay' : 0.001})
-        opt_params.append({'params': body.parameters(), 'lr': params.body_lr, 'momentum' : 0.9, 'dampening' : 0.9, 'weight_decay' : 0.001})
+        opt_params.append({'params': head.parameters(), 'lr': params.ft_head_lr, 'momentum' : 0.9, 'dampening' : 0.9, 'weight_decay' : 0.001})
+        opt_params.append({'params': body.parameters(), 'lr': params.ft_body_lr, 'momentum' : 0.9, 'dampening' : 0.9, 'weight_decay' : 0.001})
+        
         optimizer = torch.optim.SGD(opt_params)
-
         criterion = nn.CrossEntropyLoss().cuda()
 
         x_support = None
         f_support = None
-        y_support = torch.arange(w).repeat_interleave(s).cuda() # 각 요소를 반복 [000001111122222....]
+        y_support = torch.arange(w).repeat_interleave(s).cuda() 
         y_support_np = y_support.cpu().numpy()
 
         x_query = next(query_iterator)[0].cuda()
@@ -199,8 +192,10 @@ def main(params):
 
         # For each epoch
         for epoch in range(n_epoch):
-            # Train
-            body.train()
+            if params.ft_parts == "head":
+                body.eval()
+            else:
+                body.train()
             head.train()
 
             aug_bool = mix_bool or params.ft_augmentation
@@ -220,25 +215,19 @@ def main(params):
                         mode = params.ft_mixup
                     elif params.ft_cutmix:
                         mode = params.ft_cutmix
-                    elif params.ft_manifold_mixup:
-                        mode = params.ft_manifold_mixup
                     else:
                         raise ValueError ("Unknown mode: %s" % mode)
 
-                    # lambda options
-                    if mode != 'lam':
-                        lam = np.random.beta(1.0, 1.0) 
-                    else: # mode == 'lam'
-                        lam = np.random.beta(0.01*(epoch+1), 0.01*(epoch+1))
+                    lam = np.random.beta(1.0, 1.0) 
                     bbx1, bby1, bbx2, bby2 = rand_bbox(x_support.shape, lam) # cutmix corner points
 
-                    if mode == 'both' or mode == 'lam':
+                    if mode == 'both':
                         indices_shuffled = torch.randperm(x_support.shape[0])
                     else:
                         shuffled = np.array([])
-                        if mode == 'same' :
+                        if mode == 'within' :
                             class_arr = range(w)
-                        elif mode == 'diff': 
+                        elif mode == 'between': 
                             class_arr_idx = np.random.choice(range(len(class_shuffled)), 1)[0]
                             class_arr = class_shuffled[class_arr_idx]
 
@@ -270,9 +259,6 @@ def main(params):
 
                 if aug_bool:
                     f_batch = body_forward(x_support_aug[batch_indices], body, backbone, torch_pretrained, params)
-                    if params.ft_manifold_mixup:
-                        f_batch_shuffled = body_forward(x_support[indices_shuffled[batch_indices]], body, backbone, torch_pretrained, params)
-                        f_batch = lam * f_batch[:,:] + (1. - lam) * f_batch_shuffled[:,:]
                 else:
                     f_batch = body_forward(x_support[batch_indices], body, backbone, torch_pretrained, params)
 

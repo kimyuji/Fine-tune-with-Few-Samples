@@ -68,8 +68,8 @@ def parse_args(mode):
     parser.add_argument('--ft_epochs', default=100, type=int)
     parser.add_argument('--ft_pretrain_epoch', default=None, type=int)
     parser.add_argument('--ft_batch_size', default=4, type=int) 
-    parser.add_argument('--head_lr', default=0.01, type=float) 
-    parser.add_argument('--body_lr', default=0.01, type=float) 
+    parser.add_argument('--ft_head_lr', default=0.01, type=float) 
+    parser.add_argument('--ft_body_lr', default=0.01, type=float) 
     parser.add_argument('--ft_optimizer', default='SGD', type=str) 
     parser.add_argument('--ft_lr_scheduler', default=None, type=str) 
     
@@ -79,25 +79,13 @@ def parse_args(mode):
     parser.add_argument('--ft_intermediate_test', action='store_true', help='Evaluate on query set during fine-tuning')
     parser.add_argument('--ft_episode_seed', default=0, type=int)
 
-    # option for training
-    parser.add_argument('--ft_valid_mode', default = None, type=str, help ='{random_aug versions, "fixed_aug", "clean"}')
-    parser.add_argument('--ft_train_with_clean', action='store_true', help="{This option is only available on full update with augmentation used} train augmented imgs with original imgs")
     # augmentation options
-    parser.add_argument('--ft_augmentation', default=None, type=str, help="Augmentation used for fine-tuning {None, 'base', 'strong', 'RandomHorizontalFlip'}")
-    parser.add_argument('--ft_manifold_aug', default = None, type = str, help="select version : {'v1', 'v2', 'v3', 'adaptive'}")
-    parser.add_argument('--ft_manifold_mixup', default=None, type = str, help="version : {same, diff, both, lam}")
-    parser.add_argument('--ft_cutmix', default=None, type=str ,help="version : {same, diff, both, lam}")
-    parser.add_argument('--ft_mixup', default=None, type=str ,help="version : {same, diff, both, lam}")
-    parser.add_argument('--ft_label_smoothing', default=0, type=float)
+    parser.add_argument('--ft_augmentation', default=None, type=str, help="Augmentation used for fine-tuning {None, 'base', 'strong'}")
+    parser.add_argument('--ft_cutmix', default=None, type=str ,help="CutMix Augmentation for fine-tuning {within, between, both}")
+    parser.add_argument('--ft_mixup', default=None, type=str ,help="MixUp Augmentation for fine-tuning {within, between, both}")
     
-    parser.add_argument('--ft_scheduler_start', default=None, type=int, help="Write start epoch of augmentation. If you want no augmentation, make sure you set ft_scheduler_start == ft_scheduler_end")
-    parser.add_argument('--ft_scheduler_end', default=None, type=int, help="Write end epoch of augmentation")
-    parser.add_argument('--ft_EWC', action='store_true', help='To prevent catastrophic forgetting')
-
-    # regularizer
-    parser.add_argument('--one_stage_reg', default=None, type=str, help = "Choose one of {aug_CE, clean_CE, both_CE}")
-    parser.add_argument('--two_stage_reg_rate', default=0.9, type=float, help = "rate for aug_CE loss, (1-rate) will be for l1 regularizer term")
-    parser.add_argument('--ema', default=None, type=float, help = "f = ema * f + (1-ema) * f dash")
+    parser.add_argument('--ft_scheduler_start', default=None, type=int, help="The start epoch of augmentation")
+    parser.add_argument('--ft_scheduler_end', default=None, type=int, help="The end epoch of augmentation")
     
     # experiments 
     parser.add_argument('--v_score', action='store_true', help='save v measurement cluster store')
@@ -105,20 +93,6 @@ def parse_args(mode):
     parser.add_argument('--save_LP_FT_feat', action='store_true', help='save LP and FT features of query set')
     parser.add_argument('--ft_update_scheduler', default=None, type=str ,help="version : {LP-FT, body-FT, body-LP, LP-body}")
     parser.add_argument('--save_norm', action='store_true', help='save gradient norm of each layers')
-    
-    
-    
-    parser.add_argument('--save_succ_fail', default = False, type=bool)
-    parser.add_argument('--check_perf', default = False, type=bool)
-
-    # sefl-supervised loss options 
-    parser.add_argument('--ft_SS', default=None, type=str, help='{add_simclr, add_supcon, add_ft_supcon}')
-    parser.add_argument('--ft_tau', default=0.5, type=float, help='Tau for contrastive loss')
-
-    # TTA options
-    parser.add_argument('--ft_tta_mode', default=None, type=str, help='version : {"fixed_aug", "fixed_hflip", random_aug versions}')
-    parser.add_argument('--num_tta', default=1, type=int, help='the number of augmented samples aside from clean sample')
-    parser.add_argument('--include_clean', default=False, type=bool, help='whether to include clean sample for evaluation')
     
     # update layer options
     parser.add_argument('--upt_blocks', type=str, nargs='+')
@@ -167,7 +141,6 @@ def parse_args(mode):
         parser.add_argument('--startup_split', action='store_true', help ='Use 80% of dataset, similar to STARTUP. Enabled automatically for simclr_finetune.')
         # For split (split may be used depending on pretrain_type
         parser.add_argument('--unlabeled_ratio', default=0, type=int, help ='Percentage of dataset used for unlabeled split')
-        # parser.add_argument('--unlabeled_ratio', default=20, type=int, help ='Percentage of dataset used for unlabeled split')
         parser.add_argument('--split_seed', default=1, type=int, help ='Random seed used for split. If set to 1 and unlabeled_ratio==20, will use split defined by STARTUP')
     elif mode == 'save_features':
         parser.add_argument('--split'       , default='novel', help='base/val/novel') #default novel, but you can also test base/val class accuracy if you want
@@ -192,9 +165,7 @@ def parse_args(mode):
         raise AssertionError('Invalid params.ft_parts: {}'.format(params.ft_parts))
     if params.ft_parts=='head' and params.v_score:
         raise AssertionError('finetune parts should be either body or full in ordr to calculate vscore')
-    if (params.ft_SS and params.ft_augmentation) or (params.ft_SS and params.ft_mixup) or (params.ft_SS and params.ft_cutmix) or (params.ft_SS and params.ft_manifold_mixup):
-        raise AssertionError('You cant use any augmentation in self-supervised learning')
-    if (params.v_score and not params.ft_intermediate_test) or (params.ft_valid_mode and not params.ft_intermediate_test):
+    if params.v_score and not params.ft_intermediate_test:
         raise AssertionError('You shoud use intermediate testing and v_score/ft_valid_mode at the same time')
 
     # Assign num_classes
@@ -285,6 +256,3 @@ def get_best_file(checkpoint_dir):
     else:
         return get_resume_file(checkpoint_dir)
 
-
-# scheduler 사용과 ft_with_clean 동시에 불가!!! 
-# 아무것도 Aug안하면서 clean_Test, ft_with_clean 동시에 불가!!

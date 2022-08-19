@@ -133,18 +133,6 @@ def get_pretrain_params_path(output_directory):
 
 def get_ft_output_directory(params, makedirs=True, experiment=False):
     path = get_output_directory(params, makedirs=makedirs)
-    # experiment 
-    # if params.ft_batch_size != 4:
-    #     path = get_output_directory(params, makedirs=makedirs).replace("output", "output_{:03d}".format(params.ft_batch_size))
-    #     path = path.replace("baseline", "batch_size")
-
-    if params.ft_optimizer != 'SGD':
-        path = get_output_directory(params, makedirs=makedirs).replace("output", "output_{}".format(params.ft_optimizer))
-        path = path.replace("baseline", "optimizer")
-    if params.ft_lr_scheduler:
-        path = get_output_directory(params, makedirs=makedirs).replace("output", "output_{}".format(params.ft_lr_scheduler))
-        path = path.replace("baseline", "lr_scheduler")   
-         
 
     if not params.ut:
         path = os.path.join(path, DATASET_KEYS[params.target_dataset])
@@ -153,9 +141,6 @@ def get_ft_output_directory(params, makedirs=True, experiment=False):
 
     if experiment == True:
         path = path.replace("baseline/output", "experiment/perplexity")
-    
-    if params.ft_SS:
-        path = os.path.join(path, params.ft_SS)
 
     if params.ft_augmentation :
         path = os.path.join(path, 'augmentation')
@@ -166,19 +151,12 @@ def get_ft_output_directory(params, makedirs=True, experiment=False):
     if params.ft_mixup:
         path = os.path.join(path, 'mixup')
         path = os.path.join(path, params.ft_mixup)
-    if params.ft_manifold_mixup:
-        path = os.path.join(path, 'manifold_mixup')
-        path = os.path.join(path, params.ft_manifold_mixup)
-    if params.ft_label_smoothing!=0:
-        path = os.path.join(path, 'label_smoothing_{}'.format(params.ft_label_smoothing))
+        
     if params.ft_update_scheduler:
         path = os.path.join(path, params.ft_update_scheduler)
 
     if params.ft_scheduler_start != params.ft_scheduler_end:
         path = os.path.join(path, 'scheduler_{:03d}_{:03d}'.format(params.ft_scheduler_start, params.ft_scheduler_end))
-
-    # if params.ft_tta_mode:
-    #     path = os.path.join(path, "tta_" + params.ft_tta_mode)
     
     if makedirs:
         os.makedirs(path, exist_ok=True)
@@ -198,20 +176,11 @@ def get_ft_train_history_path(output_directory):
 def get_ft_test_history_path(output_directory):
     return os.path.join(output_directory, 'test_history.csv')
 
-def get_ft_test_tta_history_path(output_directory, params):
-    if params.include_clean == True : clean = "_clean" 
-    else: clean = "_no"
-
-    return os.path.join(output_directory, f'test_history_tta.csv')
-
-def get_ft_valid_history_path(output_directory):
-    return os.path.join(output_directory, 'valid_history.csv')
+def get_ft_test_tta_history_path(output_directory):
+    return os.path.join(output_directory, 'test_history_tta.csv')
 
 def get_ft_loss_history_path(output_directory):
     return os.path.join(output_directory, 'loss_history.csv')
-
-def get_ft_clean_history_path(output_directory):
-    return os.path.join(output_directory, 'clean_history.csv')
 
 def get_ft_v_score_history_path(output_directory):
     return os.path.join(output_directory, 'v_score_support.csv'), os.path.join(output_directory, 'v_score_query.csv')

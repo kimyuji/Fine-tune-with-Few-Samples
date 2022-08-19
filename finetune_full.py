@@ -2,11 +2,9 @@ import os
 import copy
 import json
 import math
-import pickle
-from webbrowser import get
+#from webbrowser import get
 import pandas as pd
 import torch.nn as nn
-from torchvision import transforms
 import itertools
 from backbone import get_backbone_class
 import backbone
@@ -15,8 +13,8 @@ from datasets.transforms import rand_bbox
 from io_utils import parse_args
 from model import get_model_class
 from model.classifier_head import get_classifier_head_class
-from paths import get_output_directory, get_ft_output_directory, get_ft_train_history_path, get_ft_test_history_path, get_ft_valid_history_path, \
-    get_final_pretrain_state_path, get_pretrain_state_path, get_ft_params_path, get_ft_v_score_history_path, get_ft_test_tta_history_path, get_ft_loss_history_path
+from paths import get_output_directory, get_ft_output_directory, get_ft_train_history_path, get_ft_test_history_path,\
+    get_final_pretrain_state_path, get_pretrain_state_path, get_ft_params_path, get_ft_v_score_history_path, get_ft_loss_history_path
 from utils import *
 import time 
 from sklearn.cluster import KMeans 
@@ -86,18 +84,6 @@ def main(params):
     loss_history_path = get_ft_loss_history_path(output_dir)
     test_history_path = get_ft_test_history_path(output_dir)
     support_v_score_history_path, query_v_score_history_path = get_ft_v_score_history_path(output_dir)
-    
-    if params.body_lr != 0.01:
-        train_history_path = train_history_path.replace('.csv', '_bodylr_{}.csv'.format(params.body_lr))
-        test_history_path = test_history_path.replace('.csv', '_bodylr_{}.csv'.format(params.body_lr))
-    if params.head_lr != 0.01:
-        train_history_path = train_history_path.replace('.csv', '_headlr_{}.csv'.format(params.head_lr))
-        test_history_path = test_history_path.replace('.csv', '_headlr_{}.csv'.format(params.head_lr))
-
-    if params.ft_epochs != 100:
-        train_history_path = train_history_path.replace('.csv', '_{}epochs.csv'.format(params.ft_epochs))
-        test_history_path = test_history_path.replace('.csv', '_{}epochs.csv'.format(params.ft_epochs))
-        loss_history_path = loss_history_path.replace('.csv', '_{}epochs.csv'.format(params.ft_epochs))
 
     params_path = get_ft_params_path(output_dir)
 
@@ -110,7 +96,6 @@ def main(params):
     with open(params_path, 'w') as f_batch:
         json.dump(vars(params), f_batch, indent=4)
     
-    # 저장할 dataframe
     df_train = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
                             columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
     df_test = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
@@ -145,9 +130,8 @@ def main(params):
     print("%02d/%02d %02d:%02d:%02d" %(now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec))
     print()
 
-    # mixup, cutmix, manifold mixup need 2 labels <- mix_bool == True
-    mix_bool = (params.ft_mixup or params.ft_cutmix or params.ft_manifold_mixup)
-    # for cutmix or mixup (different class option)
+    mix_bool = (params.ft_mixup or params.ft_cutmix)
+    # for cutmix or mixup (between class option)
     if mix_bool:
         all_cases = list(itertools.permutations(list(range(w))))
         class_shuffled = all_cases
@@ -176,15 +160,15 @@ def main(params):
             pass
 
         opt_params = []
-        opt_params.append({'params': head.parameters(), 'lr': params.head_lr, 'momentum' : 0.9, 'dampening' : 0.9, 'weight_decay' : 0.001})
-        opt_params.append({'params': body.parameters(), 'lr': params.body_lr, 'momentum' : 0.9, 'dampening' : 0.9, 'weight_decay' : 0.001})
+        opt_params.append({'params': head.parameters(), 'lr': params.ft_head_lr, 'momentum' : 0.9, 'dampening' : 0.9, 'weight_decay' : 0.001})
+        opt_params.append({'params': body.parameters(), 'lr': params.ft_body_lr, 'momentum' : 0.9, 'dampening' : 0.9, 'weight_decay' : 0.001})
         optimizer = torch.optim.SGD(opt_params)
 
         criterion = nn.CrossEntropyLoss().cuda()
 
         x_support = None
         f_support = None
-        y_support = torch.arange(w).repeat_interleave(s).cuda() # 각 요소를 반복 [000001111122222....]
+        y_support = torch.arange(w).repeat_interleave(s).cuda()
         y_support_np = y_support.cpu().numpy()
 
         x_query = next(query_iterator)[0].cuda()
@@ -212,7 +196,6 @@ def main(params):
 
         # For each epoch
         for epoch in range(n_epoch):
-            # Train
             if params.ft_parts == "head":
                 body.eval()
             else:
@@ -236,25 +219,19 @@ def main(params):
                         mode = params.ft_mixup
                     elif params.ft_cutmix:
                         mode = params.ft_cutmix
-                    elif params.ft_manifold_mixup:
-                        mode = params.ft_manifold_mixup
                     else:
                         raise ValueError ("Unknown mode: %s" % mode)
                     
-                    # lambda options
-                    if mode != 'lam':
-                        lam = np.random.beta(1.0, 1.0) 
-                    else: # mode == 'lam'
-                        lam = np.random.beta(0.01*(epoch+1), 0.01*(epoch+1))
+                    lam = np.random.beta(1.0, 1.0) 
                     bbx1, bby1, bbx2, bby2 = rand_bbox(x_support.shape, lam) # cutmix corner points
 
-                    if mode == 'both' or mode == 'lam':
+                    if mode == 'both':
                         indices_shuffled = torch.randperm(x_support.shape[0])
                     else:
                         shuffled = np.array([])
-                        if mode == 'same' :
+                        if mode == 'within' :
                             class_arr = range(w)
-                        elif mode == 'diff': 
+                        elif mode == 'between': 
                             class_arr_idx = np.random.choice(range(len(class_shuffled)), 1)[0]
                             class_arr = class_shuffled[class_arr_idx]
 
@@ -287,9 +264,6 @@ def main(params):
 
                 if aug_bool:
                     f_batch = body_forward(x_support_aug[batch_indices], body, backbone, torch_pretrained, params)
-                    if params.ft_manifold_mixup:
-                        f_batch_shuffled = body_forward(x_support[indices_shuffled[batch_indices]], body, backbone, torch_pretrained, params)
-                        f_batch = lam * f_batch[:,:] + (1. - lam) * f_batch_shuffled[:,:]
                 else:
                     f_batch = body_forward(x_support[batch_indices], body, backbone, torch_pretrained, params)
 
