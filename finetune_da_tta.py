@@ -120,14 +120,10 @@ def main(params):
                            columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
     df_test_tta = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
                             columns=tta_num_samples)
-
+    
     # Pre-train state
     if not torch_pretrained:
-        if params.ft_pretrain_epoch is None: # best state
-            body_state_path = get_final_pretrain_state_path(base_output_dir)
-
-        if params.source_dataset == 'tieredImageNet':
-            body_state_path = './logs/baseline/output/pretrained_model/tiered/resnet18_base_LS_base/pretrain_state_0090.pt'
+        body_state_path = get_final_pretrain_state_path(base_output_dir)
 
         if not os.path.exists(body_state_path):
             raise ValueError('Invalid pre-train state path: ' + body_state_path)
@@ -225,7 +221,7 @@ def main(params):
                         indices_shuffled = torch.randperm(x_support.shape[0])
                     else:
                         shuffled = np.array([])
-                        if mode == 'within' :
+                        if mode == 'within':
                             class_arr = range(w)
                         elif mode == 'between': 
                             class_arr_idx = np.random.choice(range(len(class_shuffled)), 1)[0]
@@ -327,8 +323,10 @@ def main(params):
             print("{}_acc={:6.2f}".format(tta_num_samples[idx], test_tta_acc_history[idx] * 100), end= " ")
         print()
 
-    fmt = 'Final Results: Acc={:5.2f} Std={:5.2f}'
-    print(fmt.format(df_test.mean()[-1] * 100, 1.96 * df_test.std()[-1] / np.sqrt(n_episodes) * 100))
+    fmt = 'Final Results on TTA (Sample # - {}): Acc={:5.2f} Std={:5.2f}'
+    for num_sample in tta_num_samples:
+        print(fmt.format(num_sample, df_test_tta[num_sample].mean() * 100, 1.96 * df_test_tta[num_sample].std() / np.sqrt(n_episodes) * 100))
+    print()
     end = time.time()
 
     print('Saved history to:')
