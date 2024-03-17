@@ -22,6 +22,7 @@ def parse_args(mode):
     parser.add_argument('--source_dataset', default='miniImageNet')  # replaces dataset
     parser.add_argument('--target_dataset', type=str, nargs='+')  # replaces dataset_names / HOTFIX: changed to list to allow for multiple targets with one CLI command
     parser.add_argument('--backbone', default='resnet10', help='Refer to backbone._backbone_class_map')  # replaces model
+    parser.add_argument('--pretrained', default=None, type=str)
 
     # Model parameters (make sure to prepend with `model_`)
     parser.add_argument('--model_simclr_projection_dim', default=128, type=int)
@@ -56,23 +57,24 @@ def parse_args(mode):
     parser.add_argument('--epochs', default=1000, type=int, help='Pre-training epochs.')  # similar to aug_mode
     parser.add_argument('--model_save_interval', default=50, type=int, help='Save model state every N epochs during pre-training.')  # similar to aug_mode
     parser.add_argument('--optimizer', default=None, type=str, help="Optimizer used during pre-training {'sgd', 'adam'}. Default if None")  # similar to aug_mode
-    parser.add_argument('--num_workers', default=4, type=int)
+    parser.add_argument('--num_workers', default=2, type=int)
 
     # New ft params
     parser.add_argument('--n_way', default=5, type=int)
     parser.add_argument('--n_query_shot', default=15, type=int)
-
+    
+    parser.add_argument('--ft_ssl_pretrained', default='default', type=str, help='SSL model')
     parser.add_argument('--ft_head', default='linear', help='See `model.classifier_head.CLASSIFIER_HEAD_CLASS_MAP`')
     parser.add_argument('--ft_tag', default='default', type=str, help='Tag used to differentiate output directories for fine-tuned models')
     parser.add_argument('--ft_epochs', default=100, type=int)
     parser.add_argument('--ft_pretrain_epoch', default=None, type=int)
     parser.add_argument('--ft_batch_size', default=4, type=int) 
-    parser.add_argument('--ft_head_lr', default=0.01, type=float) 
-    parser.add_argument('--ft_body_lr', default=0.01, type=float) 
+    parser.add_argument('--ft_lr', default=0.01, type=float) 
+    # parser.add_argument('--ft_body_lr', default=0.01, type=float) 
     parser.add_argument('--ft_optimizer', default='SGD', type=str) 
     parser.add_argument('--ft_lr_scheduler', default=None, type=str) 
     
-    parser.add_argument('--ft_parts', default='head', type=str, help="Where to fine-tune: {'full', 'body', 'head'}")
+    parser.add_argument('--ft_parts', default='head', type=str, help="Where to fine-tune: {'full', 'body', 'head', 'bnlp', ''}")
     parser.add_argument('--ft_features', default=None, type=str, help='Specify which features to use from the base model (see model/base.py)')
     parser.add_argument('--ft_save_valid', action='store_true')
     parser.add_argument('--ft_intermediate_test', action='store_true', help='Evaluate on query set during fine-tuning')
@@ -80,8 +82,11 @@ def parse_args(mode):
 
     # augmentation options
     parser.add_argument('--ft_augmentation', default=None, type=str, help="Augmentation used for fine-tuning {None, 'base', 'strong'}")
+    parser.add_argument('--ft_tta_augmentation', default=None, type=str, help="Augmentation used for fine-tuning {None, 'base', 'strong'}")
     parser.add_argument('--ft_cutmix', default=None, type=str ,help="CutMix Augmentation for fine-tuning {within, between, both}")
     parser.add_argument('--ft_mixup', default=None, type=str ,help="MixUp Augmentation for fine-tuning {within, between, both}")
+    parser.add_argument('--pruning_ratio', default=0.15, type=float ,help="Pruning Ratio")
+    parser.add_argument('--pruning_strategy', default='one-shot', type=str ,help="strategy")
     
     parser.add_argument('--ft_scheduler_start', default=None, type=int, help="The start epoch of augmentation")
     parser.add_argument('--ft_scheduler_end', default=None, type=int, help="The end epoch of augmentation")
@@ -158,8 +163,8 @@ def parse_args(mode):
         raise AssertionError('Namgyu thinks there is a problem with params.reinit_bn_stats. Plz consult.')
     if params.ut and not params.target_dataset:
         raise AssertionError('Invalid parameter combination')
-    if params.ft_parts not in ["head", "body", "full", "scratch"]:
-        raise AssertionError('Invalid params.ft_parts: {}'.format(params.ft_parts))
+    # if params.ft_parts not in ["head", "body", "full", "scratch", "bnlp", "bn", "lpthenbn"]:
+    #     raise AssertionError('Invalid params.ft_parts: {}'.format(params.ft_parts))
     if params.ft_parts=='head' and params.v_score:
         raise AssertionError('finetune parts should be either body or full in ordr to calculate vscore')
     if params.v_score and not params.ft_intermediate_test:
@@ -207,8 +212,8 @@ def parse_args(mode):
             params.lr = 0.1
         print("Using default lr for model {}: {}".format(params.model, params.lr))
 
-    params.ft_train_body = params.ft_parts in ['body', 'full', 'scratch']
-    params.ft_train_head = params.ft_parts in ['head', 'full', 'scratch']
+    params.ft_train_body = params.ft_parts in ['body', 'full', 'scratch', 'bn_full']
+    params.ft_train_head = params.ft_parts in ['head', 'full', 'scratch', 'bn_full']
 
     if params.pls_tag is None:
         params.pls_tag = params.tag

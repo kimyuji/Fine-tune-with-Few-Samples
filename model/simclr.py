@@ -4,6 +4,7 @@ from functools import lru_cache
 import numpy as np
 import torch
 from torch import nn
+# import pytorch_lightning as pl
 
 from model.base import BaseSelfSupervisedModel
 
@@ -121,3 +122,31 @@ class SimCLR(BaseSelfSupervisedModel):
                 return loss, f1, f2
         else:
             return loss
+
+# class SimCLR_pl(pl.LighteningModule):
+#     def __init__(self, backbone: pl.LighteningModule, params: Namespace):
+#         super().__init__(backbone, params)
+#         self.head = ProjectionHead(512, out_dim=params.model_simclr_projection_dim)
+#         self.ssl_loss_fn = NTXentLoss(temperature=params.model_simclr_temperature, use_cosine_similarity=True)
+#         self.final_feat_dim = 512
+
+#     def compute_ssl_loss(self, x1, x2=None, return_features=False):
+#         if x2 is None:
+#             x = x1
+#         else:
+#             x = torch.cat([x1, x2])
+#         batch_size = int(x.shape[0] / 2)
+
+#         f = self.backbone(x)
+#         f1, f2 = f[:batch_size], f[batch_size:]
+#         p1 = self.head(f1)
+#         p2 = self.head(f2)
+#         loss = self.ssl_loss_fn(p1, p2)
+
+#         if return_features:
+#             if x2 is None:
+#                 return loss, f
+#             else:
+#                 return loss, f1, f2
+#         else:
+#             return loss

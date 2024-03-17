@@ -18,24 +18,22 @@ from utils import *
 import time 
 from sklearn.cluster import KMeans 
 from sklearn.metrics.cluster import v_measure_score
-from collections import OrderedDict
-import timm
-from itertools import chain
-
 
 def main(params):
     os.environ["CUDA_VISIBLE_DEVICES"] = params.gpu_idx
     device = torch.device(f'cuda:{params.gpu_idx}' if torch.cuda.is_available() else 'cpu')
     print(f"\nCurrently Using GPU {device}\n")
     
-    base_output_dir = get_output_directory(params)
-    output_dir = get_ft_output_directory(params)
-    torch_pretrained = ("torch" in params.backbone or 'vit' in params.backbone)
-    if params.pretrained is not None:
-        output_dir = output_dir.replace('logs', 'startup')
+    base_output_dir = get_output_directory(params) 
+    output_dir = get_ft_output_directory(params).replace('logs', 'pruning_logs')
+    output_dir = os.path.join(output_dir, params.pruning_strategy)
+    torch_pretrained = ("torch" in params.backbone)
 
     print('Running fine-tune with output folder:')
     print(output_dir)
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
     
     # Settings
     n_episodes = 600
@@ -48,13 +46,7 @@ def main(params):
     q = params.n_query_shot
 
     # Model
-    if 'vit' in params.backbone:
-        backbone = get_backbone_class('vit')(params.backbone)
-        feature_dim = 768        
-    else:
-        backbone = get_backbone_class(params.backbone)()
-        feature_dim = 512
-        
+    backbone = get_backbone_class(params.backbone)()
     body = get_model_class(params.model)(backbone, params)
 
     if params.ft_features is None:
@@ -91,9 +83,9 @@ def main(params):
     query_iterator = iter(query_loader)
 
     # Output (history, params)
-    train_history_path = get_ft_train_history_path(output_dir)
-    loss_history_path = get_ft_loss_history_path(output_dir)
-    test_history_path = get_ft_test_history_path(output_dir)
+    train_history_path = get_ft_train_history_path(output_dir).replace('.csv', f'_{params.pruning_ratio}.csv')
+    loss_history_path = get_ft_loss_history_path(output_dir).replace('.csv', f'_{params.pruning_ratio}.csv')
+    test_history_path = get_ft_test_history_path(output_dir).replace('.csv', f'_{params.pruning_ratio}.csv')
     support_v_score_history_path, query_v_score_history_path = get_ft_v_score_history_path(output_dir)
 
     params_path = get_ft_params_path(output_dir)
@@ -103,12 +95,9 @@ def main(params):
     print('Saving finetune test history to {}'.format(test_history_path))
     print()
 
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
-    # saving parameters on this json file
-    with open(params_path, 'w') as f_batch:
-        json.dump(vars(params), f_batch, indent=4)
+    # # saving parameters on this json file
+    # with open(params_path, 'w') as f_batch:
+    #     json.dump(vars(params), f_batch, indent=4)
     
     df_train = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
                             columns=['epoch{}'.format(e + 1) for e in range(n_epoch)])
@@ -124,13 +113,7 @@ def main(params):
     # Pre-train state
     if not torch_pretrained:
         if params.ft_pretrain_epoch is None: # best state
-            if params.pretrained is not None:
-                if 'dynamic' in params.pretrained:
-                    body_state_path = f'./ssl_pretrained/ce_distill_ema_sgd_miniImageNet_{params.target_dataset}_resnet10/best.ckpt'
-                elif 'startup' in params.pretrained:
-                    body_state_path = f'./ssl_pretrained/student_STARTUP/miniImageNet_source/{params.target_dataset}_unlabeled_20/checkpoint_best.pkl'
-            else:
-                body_state_path = get_final_pretrain_state_path(base_output_dir)
+            body_state_path = get_final_pretrain_state_path(base_output_dir)
         
         if params.source_dataset == 'tieredImageNet':
             body_state_path = './logs/baseline/output/pretrained_model/tiered/resnet18_base_LS_base/pretrain_state_0090.pt'
@@ -141,23 +124,6 @@ def main(params):
         print('Using pre-train state:', body_state_path)
         print()
         state = torch.load(body_state_path)
-
-        if params.pretrained is not None and 'startup' in params.pretrained:
-            state_body = state['model']
-            state_head = state['clf']
-            state_simclr = state['clf_SIMCLR']
-
-            new_state = OrderedDict()
-            for k, v in state_body.items():
-                name = "backbone."+k 
-                new_state[name] = v
-            for k, v in state_head.items():
-                name = "classifier."+k
-                new_state[name] = v
-            for k, v in state_simclr.items():
-                name = "head."+k 
-                new_state[name] = v
-            state = new_state
     else:
         pass
 
@@ -176,26 +142,24 @@ def main(params):
     for episode in range(n_episodes):
         # Reset models for each episode
         if not torch_pretrained:
-            body.load_state_dict(copy.deepcopy(state), strict=True)  # note, override model.load_state_dict to change this behavior.
+            body.load_state_dict(copy.deepcopy(state))  # note, override model.load_state_dict to change this behavior.
         else:
             body = get_model_class(params.model)(copy.deepcopy(backbone), params)
                            
-        head = get_classifier_head_class(params.ft_head)(feature_dim, params.n_way, params)  
+        head = get_classifier_head_class(params.ft_head)(512, params.n_way, params)  
 
         body.cuda()
         head.cuda()
         if params.ft_parts == "head":
             for p in body.parameters():
-                p.requires_grad = False
-            ft_body_lr = 0.0
-            ft_head_lr = params.ft_lr
+                p.requires_grads = False
+            params.ft_body_lr = 0.0
         else:
-            ft_body_lr = params.ft_lr
-            ft_head_lr = params.ft_lr
+            pass
 
         opt_params = []
-        opt_params.append({'params': head.parameters(), 'lr': ft_head_lr, 'momentum' : 0.9, 'dampening' : 0.9, 'weight_decay' : 0.001})
-        opt_params.append({'params': body.parameters(), 'lr': ft_body_lr, 'momentum' : 0.9, 'dampening' : 0.9, 'weight_decay' : 0.001})
+        opt_params.append({'params': head.parameters(), 'lr': params.ft_head_lr, 'momentum' : 0.9, 'dampening' : 0.9, 'weight_decay' : 0.001})
+        opt_params.append({'params': body.parameters(), 'lr': params.ft_body_lr, 'momentum' : 0.9, 'dampening' : 0.9, 'weight_decay' : 0.001})
         
         optimizer = torch.optim.SGD(opt_params)
         criterion = nn.CrossEntropyLoss().cuda()
@@ -229,7 +193,7 @@ def main(params):
 
         # For each epoch
         for epoch in range(n_epoch):
-            if params.ft_parts == "head" or params.ft_parts == "bn_full":
+            if params.ft_parts == "head":
                 body.eval()
             else:
                 body.train()
@@ -311,11 +275,6 @@ def main(params):
 
                 optimizer.zero_grad() 
                 loss.backward() 
-                if 'vit' in params.backbone:
-                    if params.ft_parts == 'head':
-                        torch.nn.utils.clip_grad_norm_(head.parameters(), max_norm=1.)
-                    else : 
-                        torch.nn.utils.clip_grad_norm_(chain(body.parameters(), head.parameters()), max_norm=1.)
                 optimizer.step()
 
                 total_loss += loss.item()
@@ -323,7 +282,45 @@ def main(params):
             train_loss = total_loss / support_batches
             train_acc = correct / n_data
 
-            if (epoch+1)%50 == 0 or epoch == n_epoch - 1:
+            if epoch > 50:
+                # -------------------------------------------------------------
+                # iterative pruning 
+                total = 0
+                for m in body.modules():
+                    if isinstance(m, nn.Conv2d):
+                        total += m.weight.data.numel() # numel : total num of elements
+                conv_weights = torch.zeros(total)
+                index = 0
+                for m in body.modules():
+                    if isinstance(m, nn.Conv2d):
+                        size = m.weight.data.numel()
+                        conv_weights[index:(index+size)] = m.weight.data.view(-1).abs().clone() # L1 norm (magnitude)
+                        index += size
+
+                y, i = torch.sort(conv_weights) # sort by magnitude
+                if params.pruning_strategy == 'iterative':
+                    thre_index = int(total * params.pruning_ratio / 50) * (epoch-48)
+                else: # one-shot pruning
+                    thre_index = int(total * params.pruning_ratio)
+                thre = y[thre_index]
+                pruned = 0
+                # print('Pruning threshold: {}'.format(thre))
+                zero_flag = False
+                for k, m in enumerate(body.modules()):
+                    if isinstance(m, nn.Conv2d):
+                        weight_copy = m.weight.data.abs().clone()
+                        mask = weight_copy.gt(thre).float().cuda()
+                        pruned = pruned + mask.numel() - torch.sum(mask)
+                        m.weight.data.mul_(mask)
+                        if int(torch.sum(mask)) == 0:
+                            zero_flag = True
+                        # print('layer index: {:d} \t total params: {:d} \t remaining params: {:d}'.
+                            # format(k, mask.numel(), int(torch.sum(mask))))
+                # print('Total conv params: {}, Pruned conv params: {}, Pruned ratio: {}'.format(total, pruned, pruned/total))
+                # -------------------------------------------------------------
+
+
+            if params.ft_intermediate_test or epoch == n_epoch - 1:
                 body.eval()
                 head.eval()
 
@@ -357,6 +354,8 @@ def main(params):
             train_acc_history.append(train_acc.item())
             test_acc_history.append(test_acc.item())
             train_loss_history.append(train_loss)
+
+            
 
         df_train.loc[episode + 1] = train_acc_history
         df_train.to_csv(train_history_path)

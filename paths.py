@@ -28,6 +28,10 @@ BACKBONE_KEYS = {
     'torch_resnet50' : 'torch_resnet50',
     'torch_resnet101' : 'torch_resnet101',
     'torch_resnet152' : 'torch_resnet152',
+    'vit_base_patch16_224' : 'vit_base_patch16_224',
+    'vit_small_patch16_224' : 'vit_small_patch16_224',
+    'vit_base_patch16_224_in21k' : 'vit_base_patch16_224_in21k',
+    'vit_small_patch16_224_dino' : 'vit_small_patch16_224_dino'
 }
 
 MODEL_KEYS = {

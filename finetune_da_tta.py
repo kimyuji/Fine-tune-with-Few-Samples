@@ -4,6 +4,7 @@ import json
 import math
 import pandas as pd
 import torch.nn as nn
+import torch.nn.utils as torch_utils
 import itertools
 from backbone import get_backbone_class
 import backbone
@@ -18,6 +19,10 @@ from utils import *
 import time 
 from sklearn.cluster import KMeans 
 from sklearn.metrics.cluster import v_measure_score
+from collections import OrderedDict
+import timm
+
+
 
 def main(params):
     os.environ["CUDA_VISIBLE_DEVICES"] = params.gpu_idx
@@ -26,7 +31,9 @@ def main(params):
 
     base_output_dir = get_output_directory(params) 
     output_dir = get_ft_output_directory(params)
-    torch_pretrained = ("torch" in params.backbone)
+    torch_pretrained = ("torch" in params.backbone or 'vit' in params.backbone)
+    if params.pretrained is not None:
+        output_dir = output_dir.replace('logs', f'new_{params.pretrained}')
 
     print('Running fine-tune with output folder:')
     print(output_dir)
@@ -42,7 +49,18 @@ def main(params):
     q = params.n_query_shot
 
     # Model
-    backbone = get_backbone_class(params.backbone)()
+    if 'vit' in params.backbone:
+        backbone = get_backbone_class('vit')(params.backbone)
+        if 'base' in params.backbone:
+            feature_dim = 768
+        elif 'small' in params.backbone:
+            feature_dim = 384
+    elif 'resnet50' in params.backbone:
+        backbone = get_backbone_class(params.backbone)()
+        feature_dim = 2048
+    else:
+        backbone = get_backbone_class(params.backbone)()
+        feature_dim = 512
     body = get_model_class(params.model)(backbone, params)
 
     tta_num_samples = [1, 2, 4, 8, 16, 32]
@@ -60,7 +78,7 @@ def main(params):
     support_loader = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=True,
                                                     n_query_shot=q, n_episodes=n_episodes, n_epochs=support_epochs,
                                                     augmentation=params.ft_augmentation,
-                                                    unlabeled_ratio=0,
+                                                    unlabeled_ratio=params.unlabeled_ratio,
                                                     num_workers=params.num_workers,
                                                     split_seed=params.split_seed,
                                                     episode_seed=params.ft_episode_seed)
@@ -68,7 +86,7 @@ def main(params):
     query_loader = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=False,
                                                     n_query_shot=q, n_episodes=n_episodes, n_epochs=1,
                                                     augmentation=None,
-                                                    unlabeled_ratio=0,
+                                                    unlabeled_ratio=params.unlabeled_ratio,
                                                     num_workers=params.num_workers,
                                                     split_seed=params.split_seed,
                                                     episode_seed=params.ft_episode_seed)
@@ -80,7 +98,7 @@ def main(params):
     query_tta_loader = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=False,
                                                     n_query_shot=q, n_episodes=n_episodes, n_epochs=tta_num_samples[-1]-1, # here, n_epochs should be set to tta augmentation samples #
                                                     augmentation=tta_augmentation,
-                                                    unlabeled_ratio=0,
+                                                    unlabeled_ratio=params.unlabeled_ratio,
                                                     num_workers=params.num_workers,
                                                     split_seed=params.split_seed,
                                                     episode_seed=params.ft_episode_seed,
@@ -108,6 +126,12 @@ def main(params):
     print('Saving finetune TTA history to {}'.format(test_tta_history_path))
     print()
 
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        
+    if params.pretrained is not None:
+        params.unlabeled_ratio = 20
+
     # saving parameters on this json file
     with open(params_path, 'w') as f_batch:
         json.dump(vars(params), f_batch, indent=4)
@@ -123,7 +147,20 @@ def main(params):
     
     # Pre-train state
     if not torch_pretrained:
-        body_state_path = get_final_pretrain_state_path(base_output_dir)
+        if params.ft_pretrain_epoch is None: # best state
+            if params.pretrained is not None:
+                if 'dynamic' in params.pretrained:
+                    body_state_path = f'./ssl_pretrained/ce_distill_ema_sgd_miniImageNet_{params.target_dataset}_resnet10/best.ckpt'
+                elif 'startup' in params.pretrained:
+                    body_state_path = f'./ssl_pretrained/student_STARTUP/miniImageNet_source/{params.target_dataset}_unlabeled_20/checkpoint_best.pkl'
+                elif 'understanding' in params.pretrained:
+                    body_state_path = f'./ssl_pretrained/understanding/{params.target_dataset}_pretrain_state_1000.pt'
+            else:
+                body_state_path = get_final_pretrain_state_path(base_output_dir)
+        
+        if params.source_dataset == 'tieredImageNet':
+            body_state_path = './logs/baseline/output/pretrained_model/tiered/resnet18_base_LS_base/pretrain_state_0090.pt'
+
 
         if not os.path.exists(body_state_path):
             raise ValueError('Invalid pre-train state path: ' + body_state_path)
@@ -131,6 +168,30 @@ def main(params):
         print('Using pre-train state:', body_state_path)
         print()
         state = torch.load(body_state_path)
+
+        if params.pretrained is not None:
+            if 'startup' in params.pretrained:
+                state_body = state['model']
+                state_head = state['clf']
+                state_simclr = state['clf_SIMCLR']
+
+                new_state = OrderedDict()
+                for k, v in state_body.items():
+                    name = "backbone."+k 
+                    new_state[name] = v
+                for k, v in state_head.items():
+                    name = "classifier."+k
+                    new_state[name] = v
+                # for k, v in state_simclr.items():
+                #     name = "head."+k 
+                #     new_state[name] = v
+                state = new_state
+            elif 'understanding' in params.pretrained:
+                new_state = OrderedDict()
+                for k, v in state.items():
+                    if "backbone" in k or "classifier" in k:
+                        new_state[k] = v
+                state = new_state
     else:
         pass
 
@@ -153,7 +214,7 @@ def main(params):
         else:
             body = get_model_class(params.model)(copy.deepcopy(backbone), params)
 
-        head = get_classifier_head_class(params.ft_head)(512, params.n_way, params) 
+        head = get_classifier_head_class(params.ft_head)(feature_dim, params.n_way, params) 
 
         body.cuda()
         head.cuda()
@@ -161,9 +222,11 @@ def main(params):
             for p in body.parameters():
                 p.requires_grads = False
             params.ft_body_lr = 0.0
+            params.ft_head_lr = params.ft_lr
         else:
-            pass
-
+            params.ft_body_lr = params.ft_lr
+            params.ft_head_lr = params.ft_lr
+            
         opt_params = []
         opt_params.append({'params': head.parameters(), 'lr': params.ft_head_lr, 'momentum' : 0.9, 'dampening' : 0.9, 'weight_decay' : 0.001})
         opt_params.append({'params': body.parameters(), 'lr': params.ft_body_lr, 'momentum' : 0.9, 'dampening' : 0.9, 'weight_decay' : 0.001})
@@ -270,6 +333,9 @@ def main(params):
 
                 optimizer.zero_grad() 
                 loss.backward() 
+                if 'vit' in params.backbone or 'torch' in params.backbone:
+                    torch.nn.utils.clip_grad_norm_(body.parameters(), max_norm=1.)
+                    torch.nn.utils.clip_grad_norm_(head.parameters(), max_norm=1.)
                 optimizer.step()
 
                 total_loss += loss.item()
