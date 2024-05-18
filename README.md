@@ -1,9 +1,12 @@
-# How to Fine-tune Models with Few Samples : Update, Data Augmentation, and Test-time Augmentation
+## How to Fine-tune Models with Few Samples : Update, Data Augmentation, and Test-time Augmentation
+The previous version was accepted at ICML UpML workshop, 2022 (Oral).
+[**How to Fine-tune Models with Few Samples : Update, Data Augmentation, and Test-time Augmentation**](https://arxiv.org/abs/2205.07874v3)
+[Yujin Kim](https://sites.google.com/view/jongwooko)$^\*$, 
+Jaehoon Oh$^\*$, 
+Sungnyun Kim, 
+[Se-Young Yun](https://osi.kaist.ac.kr/)<br/>
+\* equal contribution
 
-The first version of our paper is accepted at ICML 2022 Workshop on Updatable Machine Learning.
-
-We used average of 2700MiB GPU memory on a single RTX 3090 per experiment, operated on Ubuntu. 
-The code is implemented on Pytorch. 
 
 To implement DA(data augmentation),
 ```
