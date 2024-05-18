@@ -1,8 +1,8 @@
 ## How to Fine-tune Models with Few Samples : Update, Data Augmentation, and Test-time Augmentation
-The previous version was accepted at ICML UpML workshop, 2022 (Oral). <br>
+The previous version was accepted at ICML UpML workshop, 2022 (Oral). <br><br>
 [**How to Fine-tune Models with Few Samples : Update, Data Augmentation, and Test-time Augmentation**](https://arxiv.org/abs/2205.07874v3)<br>
 [Yujin Kim](https://sites.google.com/view/jongwooko)$^\*$, 
-Jaehoon Oh$^\*$, 
+Jaehoon Oh $^\*$, 
 Sungnyun Kim, 
 [Se-Young Yun](https://osi.kaist.ac.kr/)<br/>
 \* equal contribution
