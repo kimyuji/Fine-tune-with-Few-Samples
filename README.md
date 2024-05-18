@@ -1,5 +1,7 @@
 # How to Fine-tune Models with Few Samples : Update, Data Augmentation, and Test-time Augmentation
 
+The first version of our paper is accepted at ICML 2022 Workshop on Updatable Machine Learning.
+
 We used average of 2700MiB GPU memory on a single RTX 3090 per experiment, operated on Ubuntu. 
 The code is implemented on Pytorch. 
 
